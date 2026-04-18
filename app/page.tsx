@@ -381,7 +381,8 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
               axisLine={false}
               tickFormatter={(value) => `${value} pts`}
               width={45}
-              domain={[0, 'auto']}
+              domain={[0, 10]}
+              ticks={[0, 2, 4, 6, 8, 10]}
             />
             <Tooltip content={<ChartTooltip />} cursor={false} />
             <ReferenceLine
