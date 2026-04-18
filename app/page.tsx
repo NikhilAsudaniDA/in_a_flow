@@ -557,7 +557,7 @@ function AnalystDetail({ analyst }: { analyst: Analyst }) {
   const upcomingPTO = getUpcomingPTO(analyst.calendarEvents)
 
   return (
-    <main className="flex-1 bg-background overflow-y-auto">
+    <main className="flex-1 bg-background overflow-y-scroll">
       <div className="p-6 px-7">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
