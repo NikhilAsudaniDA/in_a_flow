@@ -9,10 +9,11 @@ import {
   YAxis,
   Tooltip,
   ReferenceLine,
+  ReferenceArea,
   ResponsiveContainer,
   Cell,
 } from "recharts"
-import { analysts, type Analyst, type Signal, type EffortLevel, type Task, type CalendarEvent, type CalendarEventType } from "@/lib/data"
+import { analysts, type Analyst, type Signal, type EffortLevel, type Task } from "@/lib/data"
 import { cn } from "@/lib/utils"
 
 // Signal color mappings
@@ -36,22 +37,22 @@ function getSignalColor(signal: Signal) {
         avatar: "bg-[#FCEBEB] text-[#791F1F]",
         badge: "bg-[#FCEBEB] text-[#791F1F]",
       }
+    default:
+      return {
+        dot: "bg-muted",
+        avatar: "bg-muted text-muted-foreground",
+        badge: "bg-muted text-muted-foreground",
+      }
   }
 }
 
-function getEffortColor(effort: EffortLevel) {
-  switch (effort) {
-    case "Low":
-      return "bg-[#EAF3DE] text-[#27500A]"
-    case "Medium":
-      return "bg-[#FAEEDA] text-[#633806]"
-    case "High":
-      return "bg-[#FCEBEB] text-[#791F1F]"
-    case "Very High":
-      return "bg-[#F7C1C1] text-[#791F1F]"
-    case "Need to Scope":
-      return "bg-muted text-muted-foreground"
-  }
+function getEffortColor(effort: string) {
+  const e = effort.toLowerCase()
+  if (e.includes("low")) return "bg-[#EAF3DE] text-[#27500A]"
+  if (e.includes("medium")) return "bg-[#FAEEDA] text-[#633806]"
+  if (e.includes("high") && !e.includes("very")) return "bg-[#FCEBEB] text-[#791F1F]"
+  if (e.includes("very high")) return "bg-[#F7C1C1] text-[#791F1F]"
+  return "bg-muted text-muted-foreground" // need to scope or other
 }
 
 function getRatioColor(ratio: number) {
@@ -61,81 +62,27 @@ function getRatioColor(ratio: number) {
 }
 
 // Calendar event stub color mapping
-function getStubColor(eventType: CalendarEventType | null): { fill: string; border: string } {
+function getStubColor(eventType: string | null): { fill: string; border: string } {
   if (!eventType) {
     return { fill: "transparent", border: "#D3D1C7" }
   }
-  switch (eventType) {
-    case "pto":
-    case "vto":
-      return { fill: "#AFA9EC", border: "#AFA9EC" }
-    case "holiday":
-    case "floater":
-      return { fill: "#FAC775", border: "#FAC775" }
-    case "birthday":
-    case "event":
-      return { fill: "#ED93B1", border: "#ED93B1" }
-    case "anniversary":
-      return { fill: "#85B7EB", border: "#85B7EB" }
-    case "appointment":
-    case "qbr":
-      return { fill: "#97C459", border: "#97C459" }
-    default:
-      return { fill: "transparent", border: "#D3D1C7" }
+  const type = eventType.toLowerCase()
+  if (type.includes("pto") || type.includes("vto")) {
+    return { fill: "#AFA9EC", border: "#AFA9EC" }
   }
-}
-
-// Generate chart data for 31-day window (-15 to +15, with today at center)
-function generateChartData(analyst: Analyst) {
-  const today = new Date()
-  const data = []
-  
-  // Create a map of calendar events for quick lookup
-  const eventMap = new Map<number, CalendarEvent>()
-  analyst.calendarEvents.forEach((e) => eventMap.set(e.dayOffset, e))
-
-  for (let i = -15; i <= 15; i++) {
-    const date = new Date(today)
-    date.setDate(today.getDate() + i)
-    const dateLabel = date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
-
-    let workload = 0
-
-    if (i < 0) {
-      // Past days - show overdue data
-      const overdueIndex = i + 15 // Convert -15..-1 to 0..14
-      workload = analyst.chartData.overdueData[overdueIndex] || 0
-    } else {
-      // Today and future - show upcoming data
-      workload = analyst.chartData.futureData[i] || 0
-    }
-    
-    // Get calendar event for this day
-    const event = eventMap.get(i)
-    const eventType = event?.type || null
-    const stubColors = getStubColor(eventType)
-    
-    // Determine if this is a PTO/VTO conflict
-    const isPTODay = eventType === "pto" || eventType === "vto"
-    const isAppointmentDay = eventType === "appointment"
-
-    data.push({
-      day: i,
-      date: dateLabel,
-      stub: 0.4, // Fixed stub height
-      spacer: 0.15, // Gap between stub and workload
-      workload: workload > 0 ? workload : 0,
-      isToday: i === 0,
-      isPast: i < 0,
-      eventType,
-      stubFill: stubColors.fill,
-      stubBorder: stubColors.border,
-      isPTODay,
-      isAppointmentDay,
-    })
+  if (type.includes("holiday") || type.includes("floater")) {
+    return { fill: "#FAC775", border: "#FAC775" }
   }
-
-  return data
+  if (type.includes("birthday") || type.includes("event")) {
+    return { fill: "#ED93B1", border: "#ED93B1" }
+  }
+  if (type.includes("anniversary")) {
+    return { fill: "#85B7EB", border: "#85B7EB" }
+  }
+  if (type.includes("appointment") || type.includes("qbr")) {
+    return { fill: "#97C459", border: "#97C459" }
+  }
+  return { fill: "transparent", border: "#D3D1C7" }
 }
 
 function getWorkloadColor(value: number, isPast: boolean) {
@@ -145,31 +92,35 @@ function getWorkloadColor(value: number, isPast: boolean) {
   return "#B4B2A9" // Gray - Light
 }
 
+// Check if analyst has any time off in next 7 days
+function hasUpcomingTimeOff(upcomingPTO: { date: string; type: string }[]): boolean {
+  if (!upcomingPTO || upcomingPTO.length === 0) return false
+  const today = new Date()
+  const nextWeek = new Date()
+  nextWeek.setDate(today.getDate() + 7)
+  const todayStr = today.toISOString().split("T")[0]
+  const nextWeekStr = nextWeek.toISOString().split("T")[0]
+  
+  return upcomingPTO.some(pto => pto.date >= todayStr && pto.date <= nextWeekStr && (pto.type.toLowerCase() === "pto" || pto.type.toLowerCase() === "vto"))
+}
+
 // Get the first upcoming PTO within the next 7 days
-function getUpcomingPTO(events: CalendarEvent[]): CalendarEvent | null {
-  const upcoming = events.filter((e) => e.dayOffset >= 0 && e.dayOffset <= 7 && (e.type === "pto" || e.type === "vto"))
-  return upcoming.length > 0 ? upcoming.sort((a, b) => a.dayOffset - b.dayOffset)[0] : null
-}
-
-// Check if analyst has any time off in next 7 days (PTO or VTO)
-function hasUpcomingTimeOff(events: CalendarEvent[]): boolean {
-  return events.some((e) => e.dayOffset >= 0 && e.dayOffset <= 7 && (e.type === "pto" || e.type === "vto"))
-}
-
-// Get event type display name
-function getEventTypeName(type: CalendarEventType): string {
-  switch (type) {
-    case "pto": return "PTO"
-    case "vto": return "VTO"
-    case "holiday": return "Holiday"
-    case "floater": return "Floater"
-    case "birthday": return "Birthday"
-    case "anniversary": return "Work Anniversary"
-    case "appointment": return "Appointment"
-    case "qbr": return "QBR/SAR"
-    case "event": return "Event"
-    default: return type
+function getUpcomingPTO(upcomingPTO: { date: string; type: string }[]): { label: string } | null {
+  if (!upcomingPTO || upcomingPTO.length === 0) return null
+  const today = new Date()
+  const nextWeek = new Date()
+  nextWeek.setDate(today.getDate() + 7)
+  const todayStr = today.toISOString().split("T")[0]
+  const nextWeekStr = nextWeek.toISOString().split("T")[0]
+  
+  const upcoming = upcomingPTO.filter(pto => pto.date >= todayStr && pto.date <= nextWeekStr && (pto.type.toLowerCase() === "pto" || pto.type.toLowerCase() === "vto"))
+  
+  if (upcoming.length > 0) {
+    const pto = upcoming.sort((a, b) => a.date.localeCompare(b.date))[0]
+    const d = new Date(pto.date)
+    return { label: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) }
   }
+  return null
 }
 
 // Sidebar Component
@@ -224,7 +175,7 @@ function AnalystSidebar({
                 {analyst.initials}
               </span>
               <span className="text-[13px] text-foreground truncate flex-1">{analyst.name}</span>
-              {hasUpcomingTimeOff(analyst.calendarEvents) && (
+              {hasUpcomingTimeOff(analyst.upcomingPTO) && (
                 <span className="w-1.5 h-1.5 rounded-full bg-[#AFA9EC] flex-shrink-0" />
               )}
             </button>
@@ -238,7 +189,7 @@ function AnalystSidebar({
   )
 }
 
-// Metric Card — dual number (tasks + points side by side)
+// Metric Card — dual number
 function DualMetricCard({
   label,
   leftValue,
@@ -322,7 +273,7 @@ function MetricCard({
 }
 
 // Custom tooltip for the chart
-function ChartTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: ReturnType<typeof generateChartData>[0] }> }) {
+function ChartTooltip({ active, payload }: { active?: boolean; payload?: any[] }) {
   if (!active || !payload || payload.length === 0) return null
   
   const data = payload[0].payload
@@ -338,9 +289,9 @@ function ChartTooltip({ active, payload }: { active?: boolean; payload?: Array<{
   
   return (
     <div className="bg-popover border border-border rounded-md px-2.5 py-1.5 text-xs shadow-sm">
-      <p className="font-medium">{data.date}</p>
+      <p className="font-medium">{data.dateLabel}</p>
       {hasEvent && (
-        <p className="text-muted-foreground">{getEventTypeName(data.eventType!)}</p>
+        <p className="text-muted-foreground">{data.eventType}</p>
       )}
       {hasWorkload && (
         <p className="text-muted-foreground">{data.workload.toFixed(1)} pts{conflictNote}</p>
@@ -354,8 +305,44 @@ function ChartTooltip({ active, payload }: { active?: boolean; payload?: Array<{
 
 // Daily Load Chart Component
 function DailyLoadChart({ analyst }: { analyst: Analyst }) {
-  const chartData = useMemo(() => generateChartData(analyst), [analyst])
-  const backlog = analyst.chartData.backlogBeyond15Days
+  const chartData = useMemo(() => {
+    // Get local today's date string in YYYY-MM-DD format
+    const localToday = new Date()
+    const yyyy = localToday.getFullYear()
+    const mm = String(localToday.getMonth() + 1).padStart(2, '0')
+    const dd = String(localToday.getDate()).padStart(2, '0')
+    const todayStr = `${yyyy}-${mm}-${dd}`
+
+    return analyst.chartData.days.map((day) => {
+      const isPast = day.date < todayStr
+      // If the backend marked it isToday, or if our string matches
+      const isToday = day.date === todayStr || day.isToday
+      
+      const eventType = day.calendar?.type || null
+      const stubColors = getStubColor(eventType)
+      const d = new Date(day.date)
+      
+      return {
+        dateLabel: d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }),
+        dateRaw: day.date,
+        stub: 0.4,
+        spacer: 0.15,
+        workload: day.points > 0 ? day.points : 0,
+        isToday,
+        isPast,
+        eventType,
+        stubFill: stubColors.fill,
+        stubBorder: stubColors.border,
+        isPTODay: eventType?.toLowerCase() === "pto" || eventType?.toLowerCase() === "vto",
+        isAppointmentDay: eventType?.toLowerCase() === "appointment",
+      }
+    })
+  }, [analyst])
+
+  const backlog = analyst.chartData.backlog
+
+  // Only show the Today line if today is actually in the chart (i.e. a working day)
+  const todayItem = chartData.find((d) => d.isToday)
 
   return (
     <div className="mb-8">
@@ -366,11 +353,11 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 20, right: 10, left: 0, bottom: 5 }} barGap={0}>
             <XAxis
-              dataKey="date"
+              dataKey="dateLabel"
               tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
               tickLine={false}
               axisLine={false}
-              interval={2}
+              interval={0}
               angle={-45}
               textAnchor="end"
               height={50}
@@ -385,18 +372,37 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
               ticks={[0, 2, 4, 6, 8]}
             />
             <Tooltip content={<ChartTooltip />} cursor={false} />
-            <ReferenceLine
-              x={chartData.find((d) => d.isToday)?.date}
-              stroke="var(--muted-foreground)"
-              strokeDasharray="3 3"
-              label={{
-                value: "Today",
-                position: "top",
-                fontSize: 10,
-                fill: "var(--muted-foreground)",
-              }}
-            />
-            {/* Layer 1: Calendar stub (bottom) */}
+            
+            {/* Monday Dividers (Faint Solid Lines) */}
+            {chartData.map((d) => {
+              const isMonday = new Date(d.dateRaw).getUTCDay() === 1
+              if (isMonday) {
+                return (
+                  <ReferenceLine
+                    key={`div-${d.dateRaw}`}
+                    x={d.dateLabel}
+                    stroke="var(--border)"
+                    strokeOpacity={0.8}
+                  />
+                )
+              }
+              return null
+            })}
+
+            {/* Today Line (Dotted Line) */}
+            {todayItem && (
+              <ReferenceLine
+                x={todayItem.dateLabel}
+                stroke="var(--muted-foreground)"
+                strokeDasharray="3 3"
+                label={{
+                  value: "Today",
+                  position: "top",
+                  fontSize: 10,
+                  fill: "var(--muted-foreground)",
+                }}
+              />
+            )}
             <Bar dataKey="stub" stackId="stack" radius={[2, 2, 2, 2]}>
               {chartData.map((entry, index) => (
                 <Cell 
@@ -407,13 +413,11 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
                 />
               ))}
             </Bar>
-            {/* Layer 2: Spacer (invisible gap) */}
             <Bar dataKey="spacer" stackId="stack" radius={0}>
               {chartData.map((_, index) => (
                 <Cell key={`spacer-${index}`} fill="transparent" stroke="transparent" />
               ))}
             </Bar>
-            {/* Layer 3: Workload bar (top) */}
             <Bar dataKey="workload" stackId="stack" radius={[2, 2, 0, 0]}>
               {chartData.map((entry, index) => (
                 <Cell 
@@ -426,9 +430,7 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
         </ResponsiveContainer>
       </div>
 
-      {/* Legend - compact single row with divider */}
       <div className="flex items-center gap-3 mt-3 text-[11px] text-muted-foreground">
-        {/* Workload colors */}
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-sm bg-[#E24B4A]" />
           <span>Heavy (5+)</span>
@@ -442,10 +444,8 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
           <span>Light (0-2)</span>
         </div>
         
-        {/* Divider */}
         <span className="w-px h-3 bg-border mx-1" />
         
-        {/* Calendar event colors */}
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-sm bg-[#AFA9EC]" />
           <span>PTO</span>
@@ -468,8 +468,7 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
         </div>
       </div>
 
-      {/* Backlog note */}
-      {backlog && (
+      {backlog && backlog.tasks > 0 && (
         <p className="text-[11px] text-muted-foreground/70 italic mt-2">
           + {backlog.tasks} tasks overdue beyond 15 days ({backlog.points} pts not shown)
         </p>
@@ -479,56 +478,58 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
 }
 
 // Task List Component
-function TaskList({ tasks }: { tasks: Task[] }) {
-  // Sort and group tasks
-  const overdueTasks = tasks.filter((t) => t.status === "overdue")
-  const workingTasks = tasks.filter((t) => t.status === "working")
-  const blockedTasks = tasks.filter((t) => t.status === "blocked")
-  const unscopedTasks = tasks.filter((t) => t.status === "unscoped")
+function TaskList({ tasks }: { tasks: Analyst['tasks'] }) {
+  const overdueTasks = tasks.overdue || []
+  const workingTasks = tasks.working || []
+  const blockedTasks = tasks.blocked || []
+  const unscopedTasks = tasks.unscoped || []
 
-  const renderTask = (task: Task, index: number, isBlocked = false) => (
-    <div
-      key={`${task.name}-${index}`}
-      className={cn(
-        "bg-card rounded-lg px-3.5 py-2.5 flex items-center gap-3 mb-1.5",
-        isBlocked && "opacity-70"
-      )}
-    >
-      <span className="text-[13px] text-muted-foreground w-5 flex-shrink-0">{index + 1}.</span>
-      <span className="text-[13px] text-foreground flex-1 min-w-0 truncate">{task.name}</span>
-      <span className="text-[11px] text-muted-foreground flex-shrink-0 flex items-center gap-1.5">
-        {task.dueDate ? `Due ${task.dueDate}` : "No due date"}
-        {task.status === "overdue" && (
-          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-[#FCEBEB] text-[#791F1F]">
-            Overdue
-          </span>
+  const renderTask = (task: Task, index: number, isBlocked = false, isOverdue = false) => {
+    let dueStr = "No due date"
+    if (task.dueOn) {
+      const d = new Date(task.dueOn)
+      dueStr = `Due ${d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}`
+    }
+    
+    return (
+      <div
+        key={`${task.gid}-${index}`}
+        className={cn(
+          "bg-card rounded-lg px-3.5 py-2.5 flex items-center gap-3 mb-1.5",
+          isBlocked && "opacity-70"
         )}
-      </span>
-      <span
-        className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full flex-shrink-0", getEffortColor(task.effort))}
       >
-        {task.effort}
-      </span>
-    </div>
-  )
+        <span className="text-[13px] text-muted-foreground w-5 flex-shrink-0">{index}.</span>
+        <span className="text-[13px] text-foreground flex-1 min-w-0 truncate" title={task.name}>{task.name}</span>
+        <span className="text-[11px] text-muted-foreground flex-shrink-0 flex items-center gap-1.5">
+          {dueStr}
+          {isOverdue && (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-[#FCEBEB] text-[#791F1F]">
+              Overdue
+            </span>
+          )}
+        </span>
+        <span
+          className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full flex-shrink-0", getEffortColor(task.effortName))}
+        >
+          {task.effortName.replace(" effort", "")}
+        </span>
+      </div>
+    )
+  }
 
   let taskIndex = 0
 
   return (
     <div>
-      {/* Overdue tasks */}
       {overdueTasks.map((task) => {
         taskIndex++
-        return renderTask(task, taskIndex, false)
+        return renderTask(task, taskIndex, false, true)
       })}
-
-      {/* Working tasks */}
       {workingTasks.map((task) => {
         taskIndex++
-        return renderTask(task, taskIndex, false)
+        return renderTask(task, taskIndex, false, false)
       })}
-
-      {/* Blocked tasks section */}
       {blockedTasks.length > 0 && (
         <div className="mt-4 pt-4 border-t border-border">
           <h4 className="text-[13px] text-muted-foreground uppercase tracking-wider mb-3 font-medium">
@@ -536,30 +537,30 @@ function TaskList({ tasks }: { tasks: Task[] }) {
           </h4>
           {blockedTasks.map((task) => {
             taskIndex++
-            return renderTask(task, taskIndex, true)
+            return renderTask(task, taskIndex, true, false)
           })}
         </div>
       )}
-
-      {/* Unscoped tasks */}
       {unscopedTasks.map((task) => {
         taskIndex++
-        return renderTask(task, taskIndex, false)
+        return renderTask(task, taskIndex, false, false)
       })}
+      {taskIndex === 0 && <p className="text-[13px] text-muted-foreground italic">No active tasks</p>}
     </div>
   )
 }
 
 // Analyst Detail Panel Component
 function AnalystDetail({ analyst }: { analyst: Analyst }) {
+  if (!analyst) return <main className="flex-1 bg-background flex items-center justify-center text-muted-foreground">Select an analyst</main>
+
   const colors = getSignalColor(analyst.signal)
   const { metrics } = analyst
-  const upcomingPTO = getUpcomingPTO(analyst.calendarEvents)
+  const upcomingPTO = getUpcomingPTO(analyst.upcomingPTO)
 
   return (
     <main className="flex-1 bg-background overflow-y-scroll">
       <div className="p-6 px-7">
-        {/* Header */}
         <div className="flex items-center gap-4 mb-8">
           <span
             className={cn(
@@ -583,54 +584,51 @@ function AnalystDetail({ analyst }: { analyst: Analyst }) {
           </span>
         </div>
 
-        {/* Metric cards - 5 cards */}
         <div className="grid grid-cols-5 gap-3 mb-8">
           <DualMetricCard
             label="Active load"
-            leftValue={metrics.activeTasks}
+            leftValue={metrics.activeLoad.tasks}
             leftUnit="tasks"
-            rightValue={metrics.activePoints}
+            rightValue={metrics.activeLoad.points}
             rightUnit="pts"
             subtitle="due in next 14 days"
           />
           <DualMetricCard
             label="Overdue"
-            leftValue={metrics.overdueTasks}
+            leftValue={metrics.overdue.tasks}
             leftUnit="tasks"
-            rightValue={metrics.overduePoints}
+            rightValue={metrics.overdue.points}
             rightUnit="pts"
-            subtitle={metrics.overdueTasks > 0 ? "past due, still in progress" : "all caught up"}
-            valueClassName={metrics.overdueTasks > 0 ? "text-[#A32D2D]" : "text-[#27500A]"}
-            accentBorder={metrics.overdueTasks > 0 ? "red" : undefined}
+            subtitle={metrics.overdue.tasks > 0 ? "past due, still in progress" : "all caught up"}
+            valueClassName={metrics.overdue.tasks > 0 ? "text-[#A32D2D]" : "text-[#27500A]"}
+            accentBorder={metrics.overdue.tasks > 0 ? "red" : undefined}
           />
           <MetricCard
             label="Unscoped"
-            value={metrics.unscopedTasks}
+            value={metrics.unscoped.tasks}
             unit="tasks"
             subtitle="due soon, not yet scoped"
-            valueClassName={metrics.unscopedTasks > 0 ? "text-[#854F0B]" : undefined}
-            accentBorder={metrics.unscopedTasks > 0 ? "amber" : undefined}
+            valueClassName={metrics.unscoped.tasks > 0 ? "text-[#854F0B]" : undefined}
+            accentBorder={metrics.unscoped.tasks > 0 ? "amber" : undefined}
           />
           <MetricCard
             label="Blocked"
-            value={metrics.blockedTasks}
+            value={metrics.blocked.tasks}
             unit="tasks"
             subtitle="pending client / other team"
-            accentBorder={metrics.blockedTasks > 0 ? "gray" : undefined}
+            accentBorder={metrics.blocked.tasks > 0 ? "gray" : undefined}
           />
           <MetricCard
             label="Load ratio"
-            value={`${metrics.loadRatio.toFixed(2)}x`}
+            value={`${metrics.loadRatio.ratio.toFixed(2)}x`}
             unit=""
-            subtitle={`${metrics.throughput} pts/wk avg throughput`}
-            valueClassName={getRatioColor(metrics.loadRatio)}
+            subtitle={`${analyst.throughput.avgThroughput} pts/wk avg throughput`}
+            valueClassName={getRatioColor(metrics.loadRatio.ratio)}
           />
         </div>
 
-        {/* Daily Load Chart */}
         <DailyLoadChart analyst={analyst} />
 
-        {/* Active tasks */}
         <div>
           <h3 className="text-[13px] text-muted-foreground uppercase tracking-wider mb-3 font-medium">
             Active tasks
@@ -642,9 +640,8 @@ function AnalystDetail({ analyst }: { analyst: Analyst }) {
   )
 }
 
-// Main Dashboard Component
 export default function Dashboard() {
-  const [selectedId, setSelectedId] = useState(analysts[0].id)
+  const [selectedId, setSelectedId] = useState(analysts[0]?.id || "")
   const [searchQuery, setSearchQuery] = useState("")
 
   const filteredAnalysts = useMemo(() => {
