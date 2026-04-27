@@ -370,7 +370,7 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
               tickFormatter={(value) => `${value} pts`}
               width={45}
               domain={[0, 16]}
-              ticks={[0, 2, 4, 6, 8, 10, 12, 14, 16]}
+              ticks={[0, 4, 8, 12, 16]}
             />
             <Tooltip content={<ChartTooltip />} cursor={false} />
             
@@ -431,22 +431,23 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
         </ResponsiveContainer>
       </div>
 
-      <div className="flex items-center gap-1.5">
-        <span className="w-2 h-2 rounded-sm bg-[#991B1B]" />
-        <span>Very Heavy (8+)</span>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <span className="w-2 h-2 rounded-sm bg-[#E24B4A]" />
-        <span>Heavy (6-8)</span>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <span className="w-2 h-2 rounded-sm bg-[#EF9F27]" />
-        <span>Moderate (3-6)</span>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <span className="w-2 h-2 rounded-sm bg-[#B4B2A9]" />
-        <span>Light (0-3)</span>
-      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground mt-2">
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-sm bg-[#991B1B]" />
+          <span>Very Heavy (8+)</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-sm bg-[#E24B4A]" />
+          <span>Heavy (6-8)</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-sm bg-[#EF9F27]" />
+          <span>Moderate (3-6)</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-sm bg-[#B4B2A9]" />
+          <span>Light (0-3)</span>
+        </div>
         
         <span className="w-px h-3 bg-border mx-1" />
         
