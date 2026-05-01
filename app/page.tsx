@@ -561,6 +561,29 @@ function sortByPriorityRank(tasks: Task[]) {
   })
 }
 
+// Shared column widths — applied via <colgroup> so all three section tables
+// (Overdue / Active / Blocked) render identical column widths regardless of contents.
+const TASK_TABLE_COLUMNS: { key: string; width: string }[] = [
+  { key: "num", width: "4%" },
+  { key: "name", width: "32%" },
+  { key: "client", width: "11%" },
+  { key: "priorityRank", width: "11%" },
+  { key: "clientPriority", width: "11%" },
+  { key: "effort", width: "8%" },
+  { key: "dates", width: "12%" },
+  { key: "status", width: "11%" },
+]
+
+function TaskTableColgroup() {
+  return (
+    <colgroup>
+      {TASK_TABLE_COLUMNS.map((col) => (
+        <col key={col.key} style={{ width: col.width }} />
+      ))}
+    </colgroup>
+  )
+}
+
 function TaskList({ tasks }: { tasks: Analyst['tasks'] }) {
   const [collapsedSections, setCollapsedSections] = useState({ Overdue: false, Active: false, Blocked: false })
   const overdueTasks = sortByPriorityRank(tasks.overdue || [])
@@ -574,18 +597,18 @@ function TaskList({ tasks }: { tasks: Analyst['tasks'] }) {
   const renderRows = (items: Task[]) =>
     items.map((task, index) => (
       <tr key={task.gid} className="border-b border-border last:border-b-0">
-        <td className="px-3 py-3 text-[13px] text-muted-foreground whitespace-nowrap w-[5%]">{index + 1}</td>
-        <td className="px-3 py-3 text-[13px] text-foreground max-w-[34%] truncate whitespace-nowrap" title={task.name}>{task.name}</td>
-        <td className="px-3 py-3 text-[13px] text-muted-foreground w-[12%] truncate whitespace-nowrap" title={task.client}>{task.client}</td>
-        <td className="px-3 py-3 text-[13px] text-muted-foreground w-[12%] truncate whitespace-nowrap" title={task.priorityRank || '—'}>{task.priorityRank || '—'}</td>
-        <td className="px-3 py-3 text-[13px] text-muted-foreground w-[12%] truncate whitespace-nowrap" title={task.clientPriority || '—'}>{task.clientPriority || '—'}</td>
-        <td className="px-3 py-3 text-[13px] text-foreground w-[10%] truncate whitespace-nowrap">
+        <td className="px-3 py-3 text-[13px] text-muted-foreground truncate whitespace-nowrap">{index + 1}</td>
+        <td className="px-3 py-3 text-[13px] text-foreground truncate whitespace-nowrap" title={task.name}>{task.name}</td>
+        <td className="px-3 py-3 text-[13px] text-muted-foreground truncate whitespace-nowrap" title={task.client}>{task.client}</td>
+        <td className="px-3 py-3 text-[13px] text-muted-foreground truncate whitespace-nowrap" title={task.priorityRank || '—'}>{task.priorityRank || '—'}</td>
+        <td className="px-3 py-3 text-[13px] text-muted-foreground truncate whitespace-nowrap" title={task.clientPriority || '—'}>{task.clientPriority || '—'}</td>
+        <td className="px-3 py-3 text-[13px] text-foreground truncate whitespace-nowrap">
           <span className={cn("inline-flex rounded-full px-2 py-1 text-[11px] font-medium", getEffortColor(task.effortName))}>
             {task.effortName.replace(/ effort$/i, "")}
           </span>
         </td>
-        <td className="px-3 py-3 text-[13px] text-muted-foreground w-[15%] truncate whitespace-nowrap" title={formatTaskDateRange(task.startOn, task.dueOn)}>{formatTaskDateRange(task.startOn, task.dueOn)}</td>
-        <td className="px-3 py-3 text-[13px] text-muted-foreground w-[15%] truncate whitespace-nowrap" title={task.statusName}>{task.statusName}</td>
+        <td className="px-3 py-3 text-[13px] text-muted-foreground truncate whitespace-nowrap" title={formatTaskDateRange(task.startOn, task.dueOn)}>{formatTaskDateRange(task.startOn, task.dueOn)}</td>
+        <td className="px-3 py-3 text-[13px] text-muted-foreground truncate whitespace-nowrap" title={task.statusName}>{task.statusName}</td>
       </tr>
     ))
 
@@ -615,18 +638,20 @@ function TaskList({ tasks }: { tasks: Analyst['tasks'] }) {
           <p className="text-[13px] text-muted-foreground">{emptyMessage}</p>
         ) : (
           !collapsed && (
-            <div className="overflow-x-auto">
-              <table className="min-w-full table-fixed border-separate border-spacing-0 text-left">
+            // <div className="overflow-x-auto">
+            <div>
+              <table className="w-full table-fixed border-separate border-spacing-0 text-left">
+                <TaskTableColgroup />
                 <thead className="bg-background/80 text-[11px] uppercase tracking-wider text-muted-foreground">
                   <tr>
-                    <th className="px-3 py-2 w-[5%] text-left whitespace-nowrap">#</th>
-                    <th className="px-3 py-2 w-[34%] text-left whitespace-nowrap">Task Name</th>
-                    <th className="px-3 py-2 w-[12%] text-left whitespace-nowrap">Client</th>
-                    <th className="px-3 py-2 w-[12%] text-left whitespace-nowrap">Priority Rank</th>
-                    <th className="px-3 py-2 w-[12%] text-left whitespace-nowrap">Client Priority</th>
-                    <th className="px-3 py-2 w-[10%] text-left whitespace-nowrap">Effort</th>
-                    <th className="px-3 py-2 w-[15%] text-left whitespace-nowrap">Dates</th>
-                    <th className="px-3 py-2 w-[15%] text-left whitespace-nowrap">Status</th>
+                    <th className="px-3 py-2 text-left truncate whitespace-nowrap">#</th>
+                    <th className="px-3 py-2 text-left truncate whitespace-nowrap">Task Name</th>
+                    <th className="px-3 py-2 text-left truncate whitespace-nowrap">Client</th>
+                    <th className="px-3 py-2 text-left truncate whitespace-nowrap">Priority Rank</th>
+                    <th className="px-3 py-2 text-left truncate whitespace-nowrap">Client Priority</th>
+                    <th className="px-3 py-2 text-left truncate whitespace-nowrap">Effort</th>
+                    <th className="px-3 py-2 text-left truncate whitespace-nowrap">Dates</th>
+                    <th className="px-3 py-2 text-left truncate whitespace-nowrap">Status</th>
                   </tr>
                 </thead>
                 <tbody>
