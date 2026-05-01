@@ -314,19 +314,32 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
     const dd = String(localToday.getDate()).padStart(2, '0')
     const todayStr = `${yyyy}-${mm}-${dd}`
 
+    // Count working tasks due per date (for PTO conflict warnings)
+    const dueCountByDate: Record<string, number> = {}
+    const allWorkingTasks = [
+      ...(analyst.tasks.overdue || []),
+      ...(analyst.tasks.working || []),
+      ...(analyst.tasks.unscoped || []),
+    ]
+    for (const t of allWorkingTasks) {
+      if (t.dueOn) dueCountByDate[t.dueOn] = (dueCountByDate[t.dueOn] || 0) + 1
+    }
+
     return analyst.chartData.days.map((day) => {
       const isPast = day.date < todayStr
       // If the backend marked it isToday, or if our string matches
       const isToday = day.date === todayStr || day.isToday
-      
+
       const eventType = day.calendar?.type || null
       const stubColors = getStubColor(eventType)
       const d = new Date(day.date)
-      
+      const isZeroCapacity = day.calendar?.capacity === 0
+      const tasksDueOnDay = dueCountByDate[day.date] || 0
+
       return {
         dateLabel: d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }),
         dateRaw: day.date,
-        stub: 0.4,
+        stub: 0.8,
         spacer: 0.15,
         workload: day.points > 0 ? day.points : 0,
         isToday,
@@ -336,6 +349,9 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
         stubBorder: stubColors.border,
         isPTODay: eventType?.toLowerCase() === "pto" || eventType?.toLowerCase() === "vto",
         isAppointmentDay: eventType?.toLowerCase() === "appointment",
+        isZeroCapacity,
+        tasksDueOnDay,
+        showPTOWarning: isZeroCapacity && tasksDueOnDay > 0,
       }
     })
   }, [analyst])
@@ -404,6 +420,24 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
                 }}
               />
             )}
+
+            {/* PTO conflict warnings — solid line on zero-capacity days with tasks due */}
+            {chartData.map((d) =>
+              d.showPTOWarning ? (
+                <ReferenceLine
+                  key={`pto-warn-${d.dateRaw}`}
+                  x={d.dateLabel}
+                  stroke="#E24B4A"
+                  strokeWidth={1.5}
+                  label={{
+                    value: `${d.tasksDueOnDay} task${d.tasksDueOnDay === 1 ? "" : "s"} due`,
+                    position: "top",
+                    fontSize: 10,
+                    fill: "#E24B4A",
+                  }}
+                />
+              ) : null
+            )}
             <Bar dataKey="stub" stackId="stack" radius={[2, 2, 2, 2]}>
               {chartData.map((entry, index) => (
                 <Cell 
@@ -448,7 +482,11 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
           <span className="w-2 h-2 rounded-sm bg-[#B4B2A9]" />
           <span>Light (0-3)</span>
         </div>
-        
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-sm bg-[#F09595]" />
+          <span>Overdue</span>
+        </div>
+
         <span className="w-px h-3 bg-border mx-1" />
         
         <div className="flex items-center gap-1.5">
@@ -675,7 +713,7 @@ function AnalystDetail({ analyst, loadError, isLoadingData }: { analyst?: Analys
               OOO {upcomingPTO.label}
             </span>
           )}
-          <span className={cn("text-xs font-medium px-3 py-1 rounded-full flex-shrink-0", colors.badge)}>
+          <span className={cn("text-sm font-semibold px-4 py-2 rounded-full flex-shrink-0", colors.badge)}>
             {analyst.signal}
           </span>
         </div>
@@ -687,7 +725,7 @@ function AnalystDetail({ analyst, loadError, isLoadingData }: { analyst?: Analys
             leftUnit="tasks"
             rightValue={metrics.activeLoad.points}
             rightUnit="pts"
-            subtitle="due in next 14 days"
+            subtitle="due in next 15 working days"
           />
           <DualMetricCard
             label="Overdue"
