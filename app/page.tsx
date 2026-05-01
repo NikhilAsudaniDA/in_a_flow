@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect, useCallback } from "react"
-import { Search, RefreshCw } from "lucide-react"
+import { Search, RefreshCw, ChevronDown } from "lucide-react"
 import {
   BarChart,
   Bar,
@@ -524,59 +524,81 @@ function sortByPriorityRank(tasks: Task[]) {
 }
 
 function TaskList({ tasks }: { tasks: Analyst['tasks'] }) {
+  const [collapsedSections, setCollapsedSections] = useState({ Overdue: false, Active: false, Blocked: false })
   const overdueTasks = sortByPriorityRank(tasks.overdue || [])
   const activeTasks = sortByPriorityRank([...(tasks.working || []), ...(tasks.unscoped || [])])
   const blockedTasks = sortByPriorityRank(tasks.blocked || [])
+
+  const toggleSection = (section: keyof typeof collapsedSections) => {
+    setCollapsedSections((prev) => ({ ...prev, [section]: !prev[section] }))
+  }
 
   const renderRows = (items: Task[]) =>
     items.map((task, index) => (
       <tr key={task.gid} className="border-b border-border last:border-b-0">
         <td className="px-3 py-3 text-[13px] text-muted-foreground">{index + 1}</td>
         <td className="px-3 py-3 text-[13px] text-foreground max-w-[240px] truncate" title={task.name}>{task.name}</td>
-        <td className="px-3 py-3 text-[13px] text-muted-foreground">{task.client}</td>
-        <td className="px-3 py-3 text-[13px] text-muted-foreground">{task.priorityRank || '—'}</td>
-        <td className="px-3 py-3 text-[13px] text-muted-foreground">{task.clientPriority || '—'}</td>
-        <td className="px-3 py-3 text-[13px] text-foreground">
+        <td className="px-3 py-3 text-[13px] text-muted-foreground text-center w-[12%]">{task.client}</td>
+        <td className="px-3 py-3 text-[13px] text-muted-foreground text-center w-[12%]">{task.priorityRank || '—'}</td>
+        <td className="px-3 py-3 text-[13px] text-muted-foreground text-center w-[12%]">{task.clientPriority || '—'}</td>
+        <td className="px-3 py-3 text-[13px] text-foreground text-center w-[10%]">
           <span className={cn("inline-flex rounded-full px-2 py-1 text-[11px] font-medium", getEffortColor(task.effortName))}>
             {task.effortName.replace(/ effort$/i, "")}
           </span>
         </td>
-        <td className="px-3 py-3 text-[13px] text-muted-foreground">{formatTaskDateRange(task.startOn, task.dueOn)}</td>
-        <td className="px-3 py-3 text-[13px] text-muted-foreground">{task.statusName}</td>
+        <td className="px-3 py-3 text-[13px] text-muted-foreground w-[14%]">{formatTaskDateRange(task.startOn, task.dueOn)}</td>
+        <td className="px-3 py-3 text-[13px] text-muted-foreground w-[14%]">{task.statusName}</td>
       </tr>
     ))
 
-  const renderSection = (title: string, items: Task[], accent: string, emptyMessage: string) => (
-    <section className={cn("rounded-2xl border p-4", accent)}>
-      <div className="mb-3 flex items-center justify-between">
-        <h4 className="text-[12px] uppercase tracking-wider font-medium">{title}</h4>
-        <span className="text-[11px] text-muted-foreground">{items.length} tasks</span>
-      </div>
-      {items.length === 0 ? (
-        <p className="text-[13px] text-muted-foreground">{emptyMessage}</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full border-separate border-spacing-0 text-left">
-            <thead className="bg-background/80 text-[11px] uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2">#</th>
-                <th className="px-3 py-2">Task Name</th>
-                <th className="px-3 py-2">Client</th>
-                <th className="px-3 py-2">Priority Rank</th>
-                <th className="px-3 py-2">Client Priority</th>
-                <th className="px-3 py-2">Effort</th>
-                <th className="px-3 py-2">Dates</th>
-                <th className="px-3 py-2">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {renderRows(items)}
-            </tbody>
-          </table>
+  const renderSection = (title: keyof typeof collapsedSections, items: Task[], accent: string, emptyMessage: string) => {
+    const collapsed = collapsedSections[title]
+    return (
+      <section className={cn("rounded-2xl border p-4", accent)}>
+        <div className="mb-3 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => toggleSection(title)}
+            className="flex items-center gap-3 text-left"
+          >
+            <span className="text-[12px] uppercase tracking-wider font-medium">{title}</span>
+            <span className="text-[11px] text-muted-foreground">{items.length} tasks</span>
+          </button>
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 text-muted-foreground transition-transform",
+              collapsed ? "-rotate-90" : "rotate-0"
+            )}
+          />
         </div>
-      )}
-    </section>
-  )
+        {items.length === 0 ? (
+          <p className="text-[13px] text-muted-foreground">{emptyMessage}</p>
+        ) : (
+          !collapsed && (
+            <div className="overflow-x-auto">
+              <table className="min-w-full table-fixed border-separate border-spacing-0 text-left">
+                <thead className="bg-background/80 text-[11px] uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 w-[4%]">#</th>
+                    <th className="px-3 py-2 w-[36%]">Task Name</th>
+                    <th className="px-3 py-2 w-[12%] text-center">Client</th>
+                    <th className="px-3 py-2 w-[12%] text-center">Priority Rank</th>
+                    <th className="px-3 py-2 w-[12%] text-center">Client Priority</th>
+                    <th className="px-3 py-2 w-[10%] text-center">Effort</th>
+                    <th className="px-3 py-2 w-[14%]">Dates</th>
+                    <th className="px-3 py-2 w-[14%]">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {renderRows(items)}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+      </section>
+    )
+  }
 
   return (
     <div className="space-y-4">
