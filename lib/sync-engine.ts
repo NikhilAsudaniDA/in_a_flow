@@ -243,7 +243,17 @@ function buildCalendarMap(events: any[], analystGids: string[]) {
 
   for (const event of events) {
     const assigneeGid = event.assignee?.gid;
-    const recipients = assigneeGid && map[assigneeGid] ? [assigneeGid] : Object.keys(map);
+    let recipients: string[];
+    if (assigneeGid) {
+      // Event has a specific assignee — only apply to them if they're in our pod.
+      // Asana's calendar project contains events for the whole company; events
+      // assigned to people outside CONFIG.analysts must be dropped, not broadcast.
+      if (!map[assigneeGid]) continue;
+      recipients = [assigneeGid];
+    } else {
+      // Unassigned: pod-level event (holiday, QBR) — apply to everyone in the pod.
+      recipients = Object.keys(map);
+    }
     let colorName: string | null = null;
     for (const cf of (event.custom_fields || [])) {
       if (cf.gid === CONFIG.fields.calendarColor && cf.enum_value) {
@@ -268,7 +278,11 @@ function buildCalendarMap(events: any[], analystGids: string[]) {
     while (current <= end) {
       const ds = dateStr(current);
       for (const recipient of recipients) {
-        map[recipient][ds] = { type: matchedType, color: colorName, capacity };
+        const existing = map[recipient][ds];
+        // Lower capacity wins: a PTO (0) must never be overwritten by a birthday (1).
+        if (!existing || capacity < existing.capacity) {
+          map[recipient][ds] = { type: matchedType, color: colorName, capacity };
+        }
       }
       current = addDays(current, 1);
     }
