@@ -520,13 +520,21 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
   )
 }
 
+// Asana returns calendar dates as plain "YYYY-MM-DD" strings (no time, no zone).
+// `new Date("2026-05-04")` parses as UTC midnight, then `toLocaleDateString` in
+// America/New_York rolls it back to May 3. Build a local-time Date instead so
+// the calendar date stays the calendar date.
+function formatLocalDateLabel(s: string) {
+  const [y, m, d] = s.split("-").map(Number)
+  const dt = new Date(y, m - 1, d)
+  return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+}
+
 function formatTaskDateRange(startOn: string | null, dueOn: string | null) {
   if (!dueOn) return "—"
-  const due = new Date(dueOn)
-  const dueLabel = due.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })
+  const dueLabel = formatLocalDateLabel(dueOn)
   if (!startOn) return dueLabel
-  const start = new Date(startOn)
-  const startLabel = start.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })
+  const startLabel = formatLocalDateLabel(startOn)
   return `${startLabel} – ${dueLabel}`
 }
 

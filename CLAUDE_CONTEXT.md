@@ -351,23 +351,55 @@ Example: "Synced Apr 28, 14:30 EST"
 - Added "Overdue" swatch to the chart legend (4-tier colors complete).
 - Unified task table column widths across Overdue/Active/Blocked via shared `<colgroup>`; removed horizontal scroll.
 
-### Active bug — calendar event over-broadcast (HIGH PRIORITY)
-**Symptom:** Every analyst's daily-load chart shows PTO / Appointment / Birthday / Anniversary stubs on dates where they have no such events. User added a PTO for themselves on May 4 for testing — it doesn't appear, but stubs from other people's calendars do.
+### Active bug — calendar over-broadcast (PARTIALLY FIXED) + date off-by-one (NEW)
 
-**Root cause:** In `buildCalendarMap()` at [lib/sync-engine.ts:246](lib/sync-engine.ts#L246):
+**Original symptom:** Every analyst's daily-load chart showed PTO / Appointment / Birthday / Anniversary stubs on dates where they had no such events. User added PTO for themselves on May 4 for testing — it didn't appear, but stubs from other people's calendars did.
+
+**Original root cause:** In `buildCalendarMap()` at [lib/sync-engine.ts:246](lib/sync-engine.ts#L246) the broadcast branch fired whenever `map[assigneeGid]` was undefined — which includes the (very common) case of an event assigned to someone outside CONFIG.analysts. So out-of-pod events were broadcast to everyone.
+
+**Fix attempted (commit 5d5652b):**
+1. Drop events whose assignee is not in CONFIG.analysts (only truly unassigned events broadcast to everyone).
+2. When writing `map[recipient][ds]`, keep the lower-capacity event (PTO=0 must beat Birthday=1).
+
+**Status:** The over-broadcast is fixed (other people's events no longer pollute everyone's calendar). BUT the user's own PTO is still not appearing on the correct day, and a new date off-by-one issue has surfaced — see below.
+
+### Active bug — Asana date off-by-one (HIGH PRIORITY, OPEN)
+
+**Symptom 1 — task dates display one day earlier than Asana shows:**
+Two tasks the user has marked **due Monday May 4** in the Asana UI are rendering in the InAFlow task table as `May 3 – May 3` and `May 3` (May 3 is a Sunday — a non-working day, which makes the bug obvious). Screenshot confirms: Priority 1 and Priority 2 KPI tasks for Bealls.
+
+**Symptom 2 — PTO not appearing on the day the user set it:**
+- User marked PTO on May 4 → no PTO stub on May 4.
+- User then tried PTO on May 5 → still nothing on May 4 or May 5 in the way the user expected.
+- This is consistent with the same off-by-one: a PTO entered as May 4 in Asana may be getting stored under May 3 (Sunday) in `calendarMap`, and Sundays are filtered out of the chart entirely (weekends are skipped), so the stub disappears completely.
+
+**Working hypothesis — timezone collapse in `parseDate`:**
+Asana returns `due_on` and `start_on` as plain date strings like `"2026-05-04"` (no time, no timezone — these are calendar dates). Look at [lib/sync-engine.ts:84-88](lib/sync-engine.ts#L84-L88):
 ```ts
-const recipients = assigneeGid && map[assigneeGid] ? [assigneeGid] : Object.keys(map);
+function parseDate(s: string | null | undefined): Date | null {
+  if (!s) return null;
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
 ```
-The Asana calendar project contains events for the entire company. Any event assigned to a person who is **not** in `CONFIG.analysts` (i.e. `map[assigneeGid]` is undefined) falls into the `else` branch and gets broadcast to **all** analysts. The "apply to all" rule was meant only for *unassigned* pod-level events (holidays, QBRs).
+This constructs a Date in **local time** (the server's local time on Vercel, which is UTC). That part is actually fine on its own.
 
-**Secondary issue:** `map[recipient][ds] = { ... }` unconditionally overwrites existing entries for the same date. If a low-capacity event (PTO, capacity=0) is processed before a high-capacity event (Birthday, capacity=1) on the same day, the PTO is silently clobbered. We need precedence: prefer the lower capacity.
+The frontend is the more likely culprit. In [app/page.tsx](app/page.tsx) the date label uses `toLocaleDateString` with `timeZone: "UTC"` for the chart axis, but the task table at `formatTaskDateRange` ([app/page.tsx:485-493](app/page.tsx#L485-L493)) does:
+```ts
+const due = new Date(dueOn)            // "2026-05-04" → parsed as UTC midnight
+due.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })
+```
+`new Date("2026-05-04")` is parsed as **UTC midnight**, then formatted in `America/New_York` which is UTC-4/-5 — so it rolls back to **May 3**. That explains Symptom 1 perfectly.
 
-**Fix plan:**
-1. Change the recipient logic — events with an assignee who is *not* in our pod should be **dropped**, not broadcast. Only `assigneeGid == null/undefined` triggers broadcast.
-2. When writing into `map[recipient][ds]`, keep whichever entry has the lower capacity so a PTO can never be overwritten by a birthday.
+For Symptom 2 (PTO chart): the chart's `dateLabel` uses `timeZone: "UTC"`, so the chart axis itself shouldn't shift. But the `chartData.days[*].date` strings come from the backend's `dateStr(current)` over a UTC-constructed Date — also fine. Need to verify whether the backend's `today()` and weekday-skipping logic might be writing PTO under a Sunday key after all, OR whether the chart's stub for May 4 is being correctly placed but the user is reading the visually-shifted task table dates and assuming the chart is wrong too.
+
+**Investigation steps:**
+1. Inspect the `/api/data` payload directly — confirm what `dueOn` strings the backend is producing for the two May-4 tasks, and what date keys the user's PTO is stored under in `calendarDays`.
+2. If the backend stores them correctly as `2026-05-04`, the fix is purely in `formatTaskDateRange`: parse the date string the same way `parseDate` does (split + local construct) so it doesn't shift to UTC midnight.
+3. If the backend has shifted them to `2026-05-03`, the bug is in how Asana's date strings are parsed somewhere upstream.
 
 ### In progress / pending
-- Fix the calendar over-broadcast bug described above.
+- Diagnose and fix the date off-by-one bug — both task table dates and PTO chart placement.
 
 ### Current step
-Investigating and fixing the calendar event over-broadcast regression discovered during user QA on 2026-05-01.
+User reported the date off-by-one on 2026-05-01 after the calendar over-broadcast fix. Investigating whether the shift originates in the backend payload or only in the frontend `formatTaskDateRange`.
