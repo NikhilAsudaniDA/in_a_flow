@@ -3,6 +3,7 @@
 
 import { put } from "@vercel/blob";
 import { runSync } from "@/lib/sync-engine";
+import { getConfig } from "@/lib/config";
 
 export const maxDuration = 60; // Allow up to 60 seconds for Asana API calls
 
@@ -23,8 +24,21 @@ export async function GET(request: Request) {
   }
 
   try {
+    // Load analyst roster from config (falls back to hardcoded seed if not yet initialized)
+    const config = await getConfig();
+    const activeAnalysts = config.analysts
+      .filter((a) => a.status === "active" || a.status === "ramping")
+      .map((a) => ({
+        gid: a.gid,
+        name: a.name,
+        pod: a.pod,
+        status: a.status,
+        email: a.email,
+        clients: a.clients,
+      }));
+
     // Run the full sync
-    const result = await runSync(pat);
+    const result = await runSync(pat, activeAnalysts);
 
     // Save to Vercel Blob
     const blob = await put("inaflow-data.json", JSON.stringify(result), {

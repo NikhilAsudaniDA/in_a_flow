@@ -488,14 +488,24 @@ function buildTaskList(tasks: any[]) {
 // ============================================================
 // MAIN SYNC FUNCTION
 // ============================================================
-export async function runSync(pat: string) {
+export interface SyncAnalyst {
+  gid: string
+  name: string
+  pod?: string
+  status?: string
+  email?: string
+  clients?: string[]
+}
+
+export async function runSync(pat: string, analysts?: SyncAnalyst[]) {
+  const analystList: SyncAnalyst[] = analysts || CONFIG.analysts;
   const calEvents = await fetchCalendarEvents(pat);
-  const analystGids = CONFIG.analysts.map(a => a.gid);
+  const analystGids = analystList.map(a => a.gid);
   const calendarMap = buildCalendarMap(calEvents, analystGids);
 
   const results: Record<string, any> = {};
 
-  for (const analyst of CONFIG.analysts) {
+  for (const analyst of analystList) {
     const rawTasks = await fetchAnalystTasks(analyst.gid, pat);
     const tasks = rawTasks.map(parseTask);
     const calDays = calendarMap[analyst.gid] || {};
@@ -513,7 +523,12 @@ export async function runSync(pat: string) {
       .map(([d, v]) => ({ date: d, type: v.type }));
 
     results[analyst.gid] = {
-      analyst: analyst.name, metrics, throughput,
+      analyst: analyst.name,
+      pod: analyst.pod || "pod-3",
+      status: analyst.status || "active",
+      email: analyst.email || "",
+      clients: analyst.clients || [],
+      metrics, throughput,
       chart, taskList, upcomingPTO, calendarDays: calDays,
     };
   }

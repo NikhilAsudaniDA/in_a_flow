@@ -42,12 +42,19 @@ export interface Metrics {
   window: { overdueStart?: string; activeStart?: string; activeEnd?: string; start?: string; end?: string }
 }
 
+export type AnalystPod = "pod-2" | "pod-3" | "shared"
+export type AnalystStatus = "active" | "ramping" | "on-leave" | "offboarded"
+
 export interface Analyst {
   id: string
   name: string
   initials: string
   role: string
   signal: Signal
+  pod: AnalystPod
+  status: AnalystStatus
+  email: string
+  clients: string[]
   metrics: Metrics
   throughput: { avgThroughput: number; weekDetails: any[] }
   chartData: {
@@ -75,6 +82,10 @@ function mapRawToAnalysts(data: Record<string, any>): Analyst[] {
     initials: getInitials(d.analyst),
     role: "Analyst",
     signal: d.metrics.loadRatio.signal as Signal,
+    pod: (d.pod || "pod-3") as AnalystPod,
+    status: (d.status || "active") as AnalystStatus,
+    email: d.email || "",
+    clients: d.clients || [],
     metrics: d.metrics,
     throughput: d.throughput,
     chartData: { days: d.chart.days, backlog: d.chart.backlog },

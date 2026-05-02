@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect, useCallback } from "react"
-import { Search, RefreshCw, ChevronDown } from "lucide-react"
+import { Search, RefreshCw, ChevronDown, UserPlus, LogOut, X, Check } from "lucide-react"
 import {
   BarChart,
   Bar,
@@ -13,36 +13,43 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts"
-import { analysts as staticAnalysts, fetchAnalystsFromAPI, triggerSync, type Analyst, type Signal, type EffortLevel, type Task } from "@/lib/data"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  analysts as staticAnalysts,
+  fetchAnalystsFromAPI,
+  triggerSync,
+  type Analyst,
+  type AnalystPod,
+  type Signal,
+  type EffortLevel,
+  type Task,
+} from "@/lib/data"
 import { cn } from "@/lib/utils"
 
-// Signal color mappings
+// ─── Signal / effort / chart color helpers ─────────────────────────────────
+
 function getSignalColor(signal: Signal) {
   switch (signal) {
     case "Optimal":
-      return {
-        dot: "bg-[#639922]",
-        avatar: "bg-[#EAF3DE] text-[#27500A]",
-        badge: "bg-[#EAF3DE] text-[#27500A]",
-      }
+      return { dot: "bg-[#639922]", avatar: "bg-[#EAF3DE] text-[#27500A]", badge: "bg-[#EAF3DE] text-[#27500A]" }
     case "Underutilized":
-      return {
-        dot: "bg-[#EF9F27]",
-        avatar: "bg-[#FAEEDA] text-[#633806]",
-        badge: "bg-[#FAEEDA] text-[#633806]",
-      }
+      return { dot: "bg-[#EF9F27]", avatar: "bg-[#FAEEDA] text-[#633806]", badge: "bg-[#FAEEDA] text-[#633806]" }
     case "Overloaded":
-      return {
-        dot: "bg-[#E24B4A]",
-        avatar: "bg-[#FCEBEB] text-[#791F1F]",
-        badge: "bg-[#FCEBEB] text-[#791F1F]",
-      }
+      return { dot: "bg-[#E24B4A]", avatar: "bg-[#FCEBEB] text-[#791F1F]", badge: "bg-[#FCEBEB] text-[#791F1F]" }
     default:
-      return {
-        dot: "bg-muted",
-        avatar: "bg-muted text-muted-foreground",
-        badge: "bg-muted text-muted-foreground",
-      }
+      return { dot: "bg-muted", avatar: "bg-muted text-muted-foreground", badge: "bg-muted text-muted-foreground" }
   }
 }
 
@@ -52,7 +59,7 @@ function getEffortColor(effort: string) {
   if (e.includes("medium")) return "bg-[#FAEEDA] text-[#633806]"
   if (e.includes("high") && !e.includes("very")) return "bg-[#FCEBEB] text-[#791F1F]"
   if (e.includes("very high")) return "bg-[#F7C1C1] text-[#791F1F]"
-  return "bg-muted text-muted-foreground" // need to scope or other
+  return "bg-muted text-muted-foreground"
 }
 
 function getRatioColor(ratio: number) {
@@ -61,7 +68,6 @@ function getRatioColor(ratio: number) {
   return "text-[#E24B4A]"
 }
 
-// Calendar event stub color mapping
 function getStubColor(eventType: string | null): { fill: string; border: string } {
   if (!eventType) return { fill: "transparent", border: "#D3D1C7" }
   const type = eventType.toLowerCase()
@@ -75,72 +81,64 @@ function getStubColor(eventType: string | null): { fill: string; border: string 
 }
 
 function getWorkloadColor(value: number, isPast: boolean) {
-  if (isPast) return "#F09595"       // Overdue (past)
-  if (value >= 8) return "#991B1B"   // Very Heavy — dark red
-  if (value >= 6) return "#E24B4A"   // Heavy — red
-  if (value >= 3) return "#EF9F27"   // Moderate — amber
-  return "#B4B2A9"                   // Light — gray
+  if (isPast) return "#F09595"
+  if (value >= 8) return "#991B1B"
+  if (value >= 6) return "#E24B4A"
+  if (value >= 3) return "#EF9F27"
+  return "#B4B2A9"
 }
 
-// Check if analyst has any time off in next 7 days
+// ─── PTO helpers ────────────────────────────────────────────────────────────
+
 function hasUpcomingTimeOff(upcomingPTO: { date: string; type: string }[]): boolean {
   if (!upcomingPTO || upcomingPTO.length === 0) return false
   const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })
   const [y, m, d] = todayStr.split("-").map(Number)
   const nextWeekDate = new Date(y, m - 1, d + 7)
   const nextWeekStr = `${nextWeekDate.getFullYear()}-${String(nextWeekDate.getMonth() + 1).padStart(2, "0")}-${String(nextWeekDate.getDate()).padStart(2, "0")}`
-
-  return upcomingPTO.some(pto => pto.date >= todayStr && pto.date <= nextWeekStr && (pto.type.toLowerCase() === "pto" || pto.type.toLowerCase() === "vto"))
+  return upcomingPTO.some(
+    (pto) =>
+      pto.date >= todayStr &&
+      pto.date <= nextWeekStr &&
+      (pto.type.toLowerCase() === "pto" || pto.type.toLowerCase() === "vto")
+  )
 }
 
-// Get the first upcoming PTO within the next 7 days
 function getUpcomingPTO(upcomingPTO: { date: string; type: string }[]): { label: string } | null {
   if (!upcomingPTO || upcomingPTO.length === 0) return null
   const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })
   const [y, m, d] = todayStr.split("-").map(Number)
   const nextWeekDate = new Date(y, m - 1, d + 7)
   const nextWeekStr = `${nextWeekDate.getFullYear()}-${String(nextWeekDate.getMonth() + 1).padStart(2, "0")}-${String(nextWeekDate.getDate()).padStart(2, "0")}`
-  
-  const upcoming = upcomingPTO.filter(pto => pto.date >= todayStr && pto.date <= nextWeekStr && (pto.type.toLowerCase() === "pto" || pto.type.toLowerCase() === "vto"))
-  
+  const upcoming = upcomingPTO.filter(
+    (pto) =>
+      pto.date >= todayStr &&
+      pto.date <= nextWeekStr &&
+      (pto.type.toLowerCase() === "pto" || pto.type.toLowerCase() === "vto")
+  )
   if (upcoming.length > 0) {
     const pto = upcoming.sort((a, b) => a.date.localeCompare(b.date))[0]
-    const d = new Date(pto.date)
-    return { label: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) }
+    const dt = new Date(pto.date)
+    return { label: dt.toLocaleDateString("en-US", { month: "short", day: "numeric" }) }
   }
   return null
 }
 
-// Metric Card — dual number
+// ─── KPI card components ────────────────────────────────────────────────────
+
 function DualMetricCard({
-  label,
-  leftValue,
-  leftUnit,
-  rightValue,
-  rightUnit,
-  subtitle,
-  valueClassName,
-  accentBorder,
+  label, leftValue, leftUnit, rightValue, rightUnit, subtitle, valueClassName, accentBorder,
 }: {
-  label: string
-  leftValue: number
-  leftUnit: string
-  rightValue: number
-  rightUnit: string
-  subtitle: string
-  valueClassName?: string
-  accentBorder?: "red" | "amber" | "gray"
+  label: string; leftValue: number; leftUnit: string; rightValue: number; rightUnit: string
+  subtitle: string; valueClassName?: string; accentBorder?: "red" | "amber" | "gray"
 }) {
   return (
-    <div
-      className={cn(
-        "bg-secondary p-3.5",
-        accentBorder === "red" && "border-l-[3px] border-l-[#E24B4A] rounded-r-lg",
-        accentBorder === "amber" && "border-l-[3px] border-l-[#EF9F27] rounded-r-lg",
-        accentBorder === "gray" && "border-l-[3px] border-l-[#B4B2A9] rounded-r-lg",
-        !accentBorder && "rounded-lg"
-      )}
-    >
+    <div className={cn("bg-secondary p-3.5",
+      accentBorder === "red" && "border-l-[3px] border-l-[#E24B4A] rounded-r-lg",
+      accentBorder === "amber" && "border-l-[3px] border-l-[#EF9F27] rounded-r-lg",
+      accentBorder === "gray" && "border-l-[3px] border-l-[#B4B2A9] rounded-r-lg",
+      !accentBorder && "rounded-lg"
+    )}>
       <p className="text-xs text-muted-foreground mb-1">{label}</p>
       <div className="flex items-baseline gap-3">
         <div className="flex items-baseline gap-1">
@@ -158,32 +156,19 @@ function DualMetricCard({
   )
 }
 
-// Metric Card — single number
 function MetricCard({
-  label,
-  value,
-  unit,
-  subtitle,
-  valueClassName,
-  accentBorder,
+  label, value, unit, subtitle, valueClassName, accentBorder,
 }: {
-  label: string
-  value: string | number
-  unit: string
-  subtitle: string
-  valueClassName?: string
-  accentBorder?: "red" | "amber" | "gray"
+  label: string; value: string | number; unit: string; subtitle: string
+  valueClassName?: string; accentBorder?: "red" | "amber" | "gray"
 }) {
   return (
-    <div
-      className={cn(
-        "bg-secondary p-3.5",
-        accentBorder === "red" && "border-l-[3px] border-l-[#E24B4A] rounded-r-lg",
-        accentBorder === "amber" && "border-l-[3px] border-l-[#EF9F27] rounded-r-lg",
-        accentBorder === "gray" && "border-l-[3px] border-l-[#B4B2A9] rounded-r-lg",
-        !accentBorder && "rounded-lg"
-      )}
-    >
+    <div className={cn("bg-secondary p-3.5",
+      accentBorder === "red" && "border-l-[3px] border-l-[#E24B4A] rounded-r-lg",
+      accentBorder === "amber" && "border-l-[3px] border-l-[#EF9F27] rounded-r-lg",
+      accentBorder === "gray" && "border-l-[3px] border-l-[#B4B2A9] rounded-r-lg",
+      !accentBorder && "rounded-lg"
+    )}>
       <p className="text-xs text-muted-foreground mb-1">{label}</p>
       <div className="flex items-baseline gap-1">
         <span className={cn("text-xl font-medium leading-none", valueClassName)}>{value}</span>
@@ -194,48 +179,32 @@ function MetricCard({
   )
 }
 
-// Custom tooltip for the chart
+// ─── Chart tooltip ──────────────────────────────────────────────────────────
+
 function ChartTooltip({ active, payload }: { active?: boolean; payload?: any[] }) {
   if (!active || !payload || payload.length === 0) return null
-  
   const data = payload[0].payload
   const hasEvent = data.eventType !== null
   const hasWorkload = data.workload > 0
-  
   let conflictNote = ""
-  if (hasWorkload && data.isPTODay) {
-    conflictNote = " (conflict — analyst is off)"
-  } else if (hasWorkload && data.isAppointmentDay) {
-    conflictNote = " (half-day out)"
-  }
-  
+  if (hasWorkload && data.isPTODay) conflictNote = " (conflict — analyst is off)"
+  else if (hasWorkload && data.isAppointmentDay) conflictNote = " (half-day out)"
   return (
     <div className="bg-popover border border-border rounded-md px-2.5 py-1.5 text-xs shadow-sm">
       <p className="font-medium">{data.dateLabel}</p>
-      {hasEvent && (
-        <p className="text-muted-foreground">{data.eventType}</p>
-      )}
-      {hasWorkload && (
-        <p className="text-muted-foreground">{data.workload.toFixed(1)} pts{conflictNote}</p>
-      )}
-      {!hasEvent && !hasWorkload && (
-        <p className="text-muted-foreground">No tasks, no events</p>
-      )}
+      {hasEvent && <p className="text-muted-foreground">{data.eventType}</p>}
+      {hasWorkload && <p className="text-muted-foreground">{data.workload.toFixed(1)} pts{conflictNote}</p>}
+      {!hasEvent && !hasWorkload && <p className="text-muted-foreground">No tasks, no events</p>}
     </div>
   )
 }
 
-// Daily Load Chart Component
+// ─── Daily load chart ───────────────────────────────────────────────────────
+
 function DailyLoadChart({ analyst }: { analyst: Analyst }) {
   const chartData = useMemo(() => {
-    // Get local today's date string in YYYY-MM-DD format
     const localToday = new Date()
-    const yyyy = localToday.getFullYear()
-    const mm = String(localToday.getMonth() + 1).padStart(2, '0')
-    const dd = String(localToday.getDate()).padStart(2, '0')
-    const todayStr = `${yyyy}-${mm}-${dd}`
-
-    // Count working tasks due per date (for PTO conflict warnings)
+    const todayStr = `${localToday.getFullYear()}-${String(localToday.getMonth() + 1).padStart(2, '0')}-${String(localToday.getDate()).padStart(2, '0')}`
     const dueCountByDate: Record<string, number> = {}
     const allWorkingTasks = [
       ...(analyst.tasks.overdue || []),
@@ -245,41 +214,32 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
     for (const t of allWorkingTasks) {
       if (t.dueOn) dueCountByDate[t.dueOn] = (dueCountByDate[t.dueOn] || 0) + 1
     }
-
     return analyst.chartData.days.map((day) => {
       const isPast = day.date < todayStr
-      // If the backend marked it isToday, or if our string matches
       const isToday = day.date === todayStr || day.isToday
-
       const eventType = day.calendar?.type || null
       const stubColors = getStubColor(eventType)
       const d = new Date(day.date)
       const isZeroCapacity = day.calendar?.capacity === 0
       const tasksDueOnDay = dueCountByDate[day.date] || 0
-
       return {
         dateLabel: d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }),
         dateRaw: day.date,
         stub: 0.8,
         spacer: 0.15,
         workload: day.points > 0 ? day.points : 0,
-        isToday,
-        isPast,
-        eventType,
+        isToday, isPast, eventType,
         stubFill: stubColors.fill,
         stubBorder: stubColors.border,
         isPTODay: eventType?.toLowerCase() === "pto" || eventType?.toLowerCase() === "vto",
         isAppointmentDay: eventType?.toLowerCase() === "appointment",
-        isZeroCapacity,
-        tasksDueOnDay,
+        isZeroCapacity, tasksDueOnDay,
         showPTOWarning: isZeroCapacity && tasksDueOnDay > 0,
       }
     })
   }, [analyst])
 
   const backlog = analyst.chartData.backlog
-
-  // Only show the Today line if today is actually in the chart (i.e. a working day)
   const todayItem = chartData.find((d) => d.isToday)
 
   return (
@@ -290,148 +250,55 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
       <div className="h-[200px]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 20, right: 10, left: 0, bottom: 5 }} barGap={0}>
-            <XAxis
-              dataKey="dateLabel"
-              tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-              tickLine={false}
-              axisLine={false}
-              interval={0}
-              angle={-45}
-              textAnchor="end"
-              height={50}
-            />
-            <YAxis
-              tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-              tickLine={false}
-              axisLine={false}
-              tickFormatter={(value) => `${value} pts`}
-              width={45}
-              domain={[0, 16]}
-              ticks={[0, 4, 8, 12, 16]}
-            />
+            <XAxis dataKey="dateLabel" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+              tickLine={false} axisLine={false} interval={0} angle={-45} textAnchor="end" height={50} />
+            <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false}
+              tickFormatter={(v) => `${v} pts`} width={45} domain={[0, 16]} ticks={[0, 4, 8, 12, 16]} />
             <Tooltip content={<ChartTooltip />} cursor={false} />
-            
-            {/* Monday Dividers (Faint Solid Lines) */}
-            {chartData.map((d) => {
-              const isMonday = new Date(d.dateRaw).getUTCDay() === 1
-              if (isMonday) {
-                return (
-                  <ReferenceLine
-                    key={`div-${d.dateRaw}`}
-                    x={d.dateLabel}
-                    stroke="var(--border)"
-                    strokeOpacity={0.8}
-                  />
-                )
-              }
-              return null
-            })}
-
-            {/* Today Line (Dotted Line) */}
-            {todayItem && (
-              <ReferenceLine
-                x={todayItem.dateLabel}
-                stroke="var(--muted-foreground)"
-                strokeDasharray="3 3"
-                label={{
-                  value: "Today",
-                  position: "top",
-                  fontSize: 10,
-                  fill: "var(--muted-foreground)",
-                }}
-              />
+            {chartData.map((d) =>
+              new Date(d.dateRaw).getUTCDay() === 1 ? (
+                <ReferenceLine key={`div-${d.dateRaw}`} x={d.dateLabel} stroke="var(--border)" strokeOpacity={0.8} />
+              ) : null
             )}
-
-            {/* PTO conflict warnings — solid line on zero-capacity days with tasks due */}
+            {todayItem && (
+              <ReferenceLine x={todayItem.dateLabel} stroke="var(--muted-foreground)" strokeDasharray="3 3"
+                label={{ value: "Today", position: "top", fontSize: 10, fill: "var(--muted-foreground)" }} />
+            )}
             {chartData.map((d) =>
               d.showPTOWarning ? (
-                <ReferenceLine
-                  key={`pto-warn-${d.dateRaw}`}
-                  x={d.dateLabel}
-                  stroke="#E24B4A"
-                  strokeWidth={1.5}
-                  label={{
-                    value: `${d.tasksDueOnDay} task${d.tasksDueOnDay === 1 ? "" : "s"} due`,
-                    position: "top",
-                    fontSize: 10,
-                    fill: "#E24B4A",
-                  }}
-                />
+                <ReferenceLine key={`pto-warn-${d.dateRaw}`} x={d.dateLabel} stroke="#E24B4A" strokeWidth={1.5}
+                  label={{ value: `${d.tasksDueOnDay} task${d.tasksDueOnDay === 1 ? "" : "s"} due`, position: "top", fontSize: 10, fill: "#E24B4A" }} />
               ) : null
             )}
             <Bar dataKey="stub" stackId="stack" radius={[2, 2, 2, 2]}>
               {chartData.map((entry, index) => (
-                <Cell 
-                  key={`stub-${index}`} 
-                  fill={entry.stubFill} 
-                  stroke={entry.stubBorder} 
-                  strokeWidth={1}
-                />
+                <Cell key={`stub-${index}`} fill={entry.stubFill} stroke={entry.stubBorder} strokeWidth={1} />
               ))}
             </Bar>
             <Bar dataKey="spacer" stackId="stack" radius={0}>
-              {chartData.map((_, index) => (
-                <Cell key={`spacer-${index}`} fill="transparent" stroke="transparent" />
-              ))}
+              {chartData.map((_, index) => <Cell key={`spacer-${index}`} fill="transparent" stroke="transparent" />)}
             </Bar>
             <Bar dataKey="workload" stackId="stack" radius={[2, 2, 0, 0]}>
               {chartData.map((entry, index) => (
-                <Cell 
-                  key={`workload-${index}`} 
-                  fill={entry.workload > 0 ? getWorkloadColor(entry.workload, entry.isPast) : "transparent"} 
-                />
+                <Cell key={`workload-${index}`} fill={entry.workload > 0 ? getWorkloadColor(entry.workload, entry.isPast) : "transparent"} />
               ))}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
-
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground mt-2">
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-sm bg-[#991B1B]" />
-          <span>Very Heavy (8+)</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-sm bg-[#E24B4A]" />
-          <span>Heavy (6-8)</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-sm bg-[#EF9F27]" />
-          <span>Moderate (3-6)</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-sm bg-[#B4B2A9]" />
-          <span>Light (0-3)</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-sm bg-[#F09595]" />
-          <span>Overdue</span>
-        </div>
-
+        <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-[#991B1B]" /><span>Very Heavy (8+)</span></div>
+        <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-[#E24B4A]" /><span>Heavy (6-8)</span></div>
+        <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-[#EF9F27]" /><span>Moderate (3-6)</span></div>
+        <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-[#B4B2A9]" /><span>Light (0-3)</span></div>
+        <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-[#F09595]" /><span>Overdue</span></div>
         <span className="w-px h-3 bg-border mx-1" />
-        
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-sm bg-[#AFA9EC]" />
-          <span>PTO</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-sm bg-[#FAC775]" />
-          <span>Holiday</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-sm bg-[#ED93B1]" />
-          <span>Birthday</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-sm bg-[#97C459]" />
-          <span>Appt/QBR</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-sm bg-[#85B7EB]" />
-          <span>Anniversary</span>
-        </div>
+        <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-[#AFA9EC]" /><span>PTO</span></div>
+        <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-[#FAC775]" /><span>Holiday</span></div>
+        <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-[#ED93B1]" /><span>Birthday</span></div>
+        <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-[#97C459]" /><span>Appt/QBR</span></div>
+        <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-[#85B7EB]" /><span>Anniversary</span></div>
       </div>
-
       {backlog && backlog.tasks > 0 && (
         <p className="text-[11px] text-muted-foreground/70 italic mt-2">
           + {backlog.tasks} tasks overdue beyond 15 days ({backlog.points} pts not shown)
@@ -441,87 +308,54 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
   )
 }
 
-// Asana returns calendar dates as plain "YYYY-MM-DD" strings (no time, no zone).
-// `new Date("2026-05-04")` parses as UTC midnight, then `toLocaleDateString` in
-// America/New_York rolls it back to May 3. Build a local-time Date instead so
-// the calendar date stays the calendar date.
+// ─── Task table ─────────────────────────────────────────────────────────────
+
 function formatLocalDateLabel(s: string) {
   const [y, m, d] = s.split("-").map(Number)
-  const dt = new Date(y, m - 1, d)
-  return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" })
 }
 
 function formatTaskDateRange(startOn: string | null, dueOn: string | null) {
   if (!dueOn) return "—"
   const dueLabel = formatLocalDateLabel(dueOn)
   if (!startOn) return dueLabel
-  const startLabel = formatLocalDateLabel(startOn)
-  return `${startLabel} – ${dueLabel}`
+  return `${formatLocalDateLabel(startOn)} – ${dueLabel}`
 }
 
-const PRIORITY_ORDER = [
-  "1",
-  "2",
-  "3",
-  "4",
-  "5",
-  "6",
-  "7",
-  "8",
-  "9",
-  "10",
-  "Flexible",
-  "Internal",
-  "Not Urgent",
-]
-
+const PRIORITY_ORDER = ["1","2","3","4","5","6","7","8","9","10","Flexible","Internal","Not Urgent"]
 function getPrioritySortIndex(value: string | null) {
   if (!value) return PRIORITY_ORDER.length
   const index = PRIORITY_ORDER.indexOf(value)
   return index === -1 ? PRIORITY_ORDER.length : index
 }
-
 function sortByPriorityRank(tasks: Task[]) {
   return [...tasks].sort((a, b) => {
-    const left = getPrioritySortIndex(a.priorityRank)
-    const right = getPrioritySortIndex(b.priorityRank)
-    if (left !== right) return left - right
-    return a.name.localeCompare(b.name)
+    const diff = getPrioritySortIndex(a.priorityRank) - getPrioritySortIndex(b.priorityRank)
+    return diff !== 0 ? diff : a.name.localeCompare(b.name)
   })
 }
 
-// Shared column widths — applied via <colgroup> so all three section tables
-// (Overdue / Active / Blocked) render identical column widths regardless of contents.
 const TASK_TABLE_COLUMNS: { key: string; width: string }[] = [
-  { key: "num", width: "4%" },
-  { key: "name", width: "32%" },
-  { key: "client", width: "11%" },
-  { key: "priorityRank", width: "11%" },
-  { key: "clientPriority", width: "11%" },
-  { key: "effort", width: "8%" },
-  { key: "dates", width: "12%" },
-  { key: "status", width: "11%" },
+  { key: "num", width: "4%" }, { key: "name", width: "32%" }, { key: "client", width: "11%" },
+  { key: "priorityRank", width: "11%" }, { key: "clientPriority", width: "11%" },
+  { key: "effort", width: "8%" }, { key: "dates", width: "12%" }, { key: "status", width: "11%" },
 ]
 
 function TaskTableColgroup() {
   return (
     <colgroup>
-      {TASK_TABLE_COLUMNS.map((col) => (
-        <col key={col.key} style={{ width: col.width }} />
-      ))}
+      {TASK_TABLE_COLUMNS.map((col) => <col key={col.key} style={{ width: col.width }} />)}
     </colgroup>
   )
 }
 
-function TaskList({ tasks }: { tasks: Analyst['tasks'] }) {
+function TaskList({ tasks }: { tasks: Analyst["tasks"] }) {
   const [collapsedSections, setCollapsedSections] = useState({ Overdue: false, Active: false, Blocked: false })
   const overdueTasks = sortByPriorityRank(tasks.overdue || [])
   const activeTasks = sortByPriorityRank([...(tasks.working || []), ...(tasks.unscoped || [])])
   const blockedTasks = sortByPriorityRank(tasks.blocked || [])
-
-  const toggleSection = (section: keyof typeof collapsedSections) => {
+  const toggleSection = (section: keyof typeof collapsedSections) =>
     setCollapsedSections((prev) => ({ ...prev, [section]: !prev[section] }))
-  }
 
   const renderRows = (items: Task[]) =>
     items.map((task, index) => (
@@ -529,8 +363,8 @@ function TaskList({ tasks }: { tasks: Analyst['tasks'] }) {
         <td className="px-3 py-3 text-[13px] text-muted-foreground truncate whitespace-nowrap">{index + 1}</td>
         <td className="px-3 py-3 text-[13px] text-foreground truncate whitespace-nowrap" title={task.name}>{task.name}</td>
         <td className="px-3 py-3 text-[13px] text-muted-foreground truncate whitespace-nowrap" title={task.client}>{task.client}</td>
-        <td className="px-3 py-3 text-[13px] text-muted-foreground truncate whitespace-nowrap" title={task.priorityRank || '—'}>{task.priorityRank || '—'}</td>
-        <td className="px-3 py-3 text-[13px] text-muted-foreground truncate whitespace-nowrap" title={task.clientPriority || '—'}>{task.clientPriority || '—'}</td>
+        <td className="px-3 py-3 text-[13px] text-muted-foreground truncate whitespace-nowrap" title={task.priorityRank || "—"}>{task.priorityRank || "—"}</td>
+        <td className="px-3 py-3 text-[13px] text-muted-foreground truncate whitespace-nowrap" title={task.clientPriority || "—"}>{task.clientPriority || "—"}</td>
         <td className="px-3 py-3 text-[13px] text-foreground truncate whitespace-nowrap">
           <span className={cn("inline-flex rounded-full px-2 py-1 text-[11px] font-medium", getEffortColor(task.effortName))}>
             {task.effortName.replace(/ effort$/i, "")}
@@ -541,33 +375,30 @@ function TaskList({ tasks }: { tasks: Analyst['tasks'] }) {
       </tr>
     ))
 
-  const renderSection = (title: keyof typeof collapsedSections, items: Task[], accent: string, emptyMessage: string) => {
+  const renderSection = (
+    title: keyof typeof collapsedSections,
+    items: Task[],
+    accent: string,
+    emptyMessage: string
+  ) => {
     const collapsed = collapsedSections[title]
     return (
       <section className={cn("rounded-2xl border p-4", accent)}>
         <div className="mb-3 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => toggleSection(title)}
-            className="w-full flex items-center justify-between gap-3 text-left"
-          >
+          <button type="button" onClick={() => toggleSection(title)}
+            className="w-full flex items-center justify-between gap-3 text-left">
             <div className="flex items-baseline gap-2">
               <span className="text-[12px] uppercase tracking-wider font-medium">{title}</span>
               <span className="text-[11px] text-muted-foreground">{items.length} tasks</span>
             </div>
-            <ChevronDown
-              className={cn(
-                "h-4 w-4 text-muted-foreground transition-transform duration-200",
-                collapsed ? "-rotate-90" : "rotate-0"
-              )}
-            />
+            <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform duration-200",
+              collapsed ? "-rotate-90" : "rotate-0")} />
           </button>
         </div>
         {items.length === 0 ? (
           <p className="text-[13px] text-muted-foreground">{emptyMessage}</p>
         ) : (
           !collapsed && (
-            // <div className="overflow-x-auto">
             <div>
               <table className="w-full table-fixed border-separate border-spacing-0 text-left">
                 <TaskTableColgroup />
@@ -583,9 +414,7 @@ function TaskList({ tasks }: { tasks: Analyst['tasks'] }) {
                     <th className="px-3 py-2 text-left truncate whitespace-nowrap">Status</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {renderRows(items)}
-                </tbody>
+                <tbody>{renderRows(items)}</tbody>
               </table>
             </div>
           )
@@ -596,38 +425,21 @@ function TaskList({ tasks }: { tasks: Analyst['tasks'] }) {
 
   return (
     <div className="space-y-4">
-      {renderSection(
-        "Overdue",
-        overdueTasks,
-        "border border-[#F5D3D3] bg-[#FEF1F1]",
-        "No overdue working tasks in the last 15 working days."
-      )}
-      {renderSection(
-        "Active",
-        activeTasks,
-        "border border-border bg-secondary",
-        "No active working tasks in the next 15 working days."
-      )}
-      {renderSection(
-        "Blocked",
-        blockedTasks,
-        "border border-border bg-muted/10",
-        "No blocked tasks."
-      )}
+      {renderSection("Overdue", overdueTasks, "border border-[#F5D3D3] bg-[#FEF1F1]", "No overdue working tasks in the last 15 working days.")}
+      {renderSection("Active", activeTasks, "border border-border bg-secondary", "No active working tasks in the next 15 working days.")}
+      {renderSection("Blocked", blockedTasks, "border border-border bg-muted/10", "No blocked tasks.")}
     </div>
   )
 }
 
-// Analyst Detail Panel Component
-function AnalystDetail({ analyst, loadError, isLoadingData }: { analyst?: Analyst; loadError: string | null; isLoadingData: boolean }) {
-  if (isLoadingData) {
-    return (
-      <main className="flex-1 bg-background flex items-center justify-center text-muted-foreground">
-        Loading analyst data…
-      </main>
-    )
-  }
+// ─── Analyst detail panel ───────────────────────────────────────────────────
 
+function AnalystDetail({ analyst, loadError, isLoadingData }: {
+  analyst?: Analyst; loadError: string | null; isLoadingData: boolean
+}) {
+  if (isLoadingData) {
+    return <main className="flex-1 bg-background flex items-center justify-center text-muted-foreground">Loading analyst data…</main>
+  }
   if (loadError) {
     return (
       <main className="flex-1 bg-background flex items-center justify-center px-6">
@@ -639,7 +451,6 @@ function AnalystDetail({ analyst, loadError, isLoadingData }: { analyst?: Analys
       </main>
     )
   }
-
   if (!analyst) return <main className="flex-1 bg-background flex items-center justify-center text-muted-foreground">Select an analyst</main>
 
   const colors = getSignalColor(analyst.signal)
@@ -650,12 +461,7 @@ function AnalystDetail({ analyst, loadError, isLoadingData }: { analyst?: Analys
     <main className="flex-1 bg-background overflow-y-scroll">
       <div className="p-6 px-7">
         <div className="flex items-center gap-4 mb-8">
-          <span
-            className={cn(
-              "w-12 h-12 rounded-full flex items-center justify-center text-[15px] font-medium flex-shrink-0",
-              colors.avatar
-            )}
-          >
+          <span className={cn("w-12 h-12 rounded-full flex items-center justify-center text-[15px] font-medium flex-shrink-0", colors.avatar)}>
             {analyst.initials}
           </span>
           <div className="flex-1 min-w-0">
@@ -671,59 +477,300 @@ function AnalystDetail({ analyst, loadError, isLoadingData }: { analyst?: Analys
             {analyst.signal}
           </span>
         </div>
-
         <div className="grid grid-cols-5 gap-3 mb-8">
-          <DualMetricCard
-            label="Active load"
-            leftValue={metrics.activeLoad.tasks}
-            leftUnit="tasks"
-            rightValue={metrics.activeLoad.points}
-            rightUnit="pts"
-            subtitle="due in next 15 working days"
-          />
-          <DualMetricCard
-            label="Overdue"
-            leftValue={metrics.overdue.tasks}
-            leftUnit="tasks"
-            rightValue={metrics.overdue.points}
-            rightUnit="pts"
+          <DualMetricCard label="Active load" leftValue={metrics.activeLoad.tasks} leftUnit="tasks"
+            rightValue={metrics.activeLoad.points} rightUnit="pts" subtitle="due in next 15 working days" />
+          <DualMetricCard label="Overdue" leftValue={metrics.overdue.tasks} leftUnit="tasks"
+            rightValue={metrics.overdue.points} rightUnit="pts"
             subtitle={metrics.overdue.tasks > 0 ? "past due, still in progress" : "all caught up"}
             valueClassName={metrics.overdue.tasks > 0 ? "text-[#A32D2D]" : "text-[#27500A]"}
-            accentBorder={metrics.overdue.tasks > 0 ? "red" : undefined}
-          />
-          <MetricCard
-            label="Unscoped"
-            value={metrics.unscoped.tasks}
-            unit="tasks"
+            accentBorder={metrics.overdue.tasks > 0 ? "red" : undefined} />
+          <MetricCard label="Unscoped" value={metrics.unscoped.tasks} unit="tasks"
             subtitle="due soon, not yet scoped"
             valueClassName={metrics.unscoped.tasks > 0 ? "text-[#854F0B]" : undefined}
-            accentBorder={metrics.unscoped.tasks > 0 ? "amber" : undefined}
-          />
-          <MetricCard
-            label="Blocked"
-            value={metrics.blocked.tasks}
-            unit="tasks"
+            accentBorder={metrics.unscoped.tasks > 0 ? "amber" : undefined} />
+          <MetricCard label="Blocked" value={metrics.blocked.tasks} unit="tasks"
             subtitle="pending client / other team"
-            accentBorder={metrics.blocked.tasks > 0 ? "gray" : undefined}
-          />
-          <MetricCard
-            label="Load ratio"
-            value={`${metrics.loadRatio.ratio.toFixed(2)}x`}
-            unit=""
+            accentBorder={metrics.blocked.tasks > 0 ? "gray" : undefined} />
+          <MetricCard label="Load ratio" value={`${metrics.loadRatio.ratio.toFixed(2)}x`} unit=""
             subtitle={`${analyst.throughput.avgThroughput} pts/wk avg throughput`}
-            valueClassName={getRatioColor(metrics.loadRatio.ratio)}
-          />
+            valueClassName={getRatioColor(metrics.loadRatio.ratio)} />
         </div>
-
         <DailyLoadChart analyst={analyst} />
-
-        <div>
-          <TaskList tasks={analyst.tasks} />
-        </div>
+        <div><TaskList tasks={analyst.tasks} /></div>
       </div>
     </main>
   )
 }
+
+// ─── Add Analyst Modal ──────────────────────────────────────────────────────
+
+interface LookupResult {
+  gid: string
+  name: string
+  email: string
+  jobTitle: string
+  photoUrl: string
+}
+
+function AddAnalystModal({
+  open,
+  onClose,
+  existingGids,
+  onSuccess,
+}: {
+  open: boolean
+  onClose: () => void
+  existingGids: Set<string>
+  onSuccess: () => void
+}) {
+  const [email, setEmail] = useState("")
+  const [lookupResult, setLookupResult] = useState<LookupResult | null>(null)
+  const [lookupError, setLookupError] = useState<string | null>(null)
+  const [isLookingUp, setIsLookingUp] = useState(false)
+  const [pod, setPod] = useState("")
+  const [status, setStatus] = useState("active")
+  const [clientInput, setClientInput] = useState("")
+  const [clients, setClients] = useState<string[]>([])
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const reset = () => {
+    setEmail("")
+    setLookupResult(null)
+    setLookupError(null)
+    setIsLookingUp(false)
+    setPod("")
+    setStatus("active")
+    setClientInput("")
+    setClients([])
+    setIsSaving(false)
+    setSaveError(null)
+  }
+
+  const handleClose = () => {
+    reset()
+    onClose()
+  }
+
+  const handleLookup = async () => {
+    if (!email.trim()) return
+    setIsLookingUp(true)
+    setLookupError(null)
+    setLookupResult(null)
+    try {
+      const res = await fetch(`/api/lookup-analyst?email=${encodeURIComponent(email.trim())}`)
+      const json = await res.json()
+      if (!res.ok) {
+        setLookupError(json.error || "Lookup failed")
+        return
+      }
+      if (existingGids.has(json.gid)) {
+        setLookupError("This analyst is already added")
+        return
+      }
+      setLookupResult(json)
+    } catch {
+      setLookupError("Network error. Please try again.")
+    } finally {
+      setIsLookingUp(false)
+    }
+  }
+
+  const addClient = () => {
+    const val = clientInput.trim()
+    if (val && !clients.includes(val)) {
+      setClients((prev) => [...prev, val])
+    }
+    setClientInput("")
+  }
+
+  const handleClientKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault()
+      addClient()
+    } else if (e.key === "Backspace" && !clientInput && clients.length > 0) {
+      setClients((prev) => prev.slice(0, -1))
+    }
+  }
+
+  const handleSave = async () => {
+    if (!lookupResult || !pod) return
+    setIsSaving(true)
+    setSaveError(null)
+    try {
+      const res = await fetch("/api/config/add-analyst", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gid: lookupResult.gid,
+          name: lookupResult.name,
+          email: lookupResult.email,
+          jobTitle: lookupResult.jobTitle,
+          photoUrl: lookupResult.photoUrl,
+          pod,
+          status,
+          clients,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setSaveError(json.error || "Save failed")
+        return
+      }
+      handleClose()
+      onSuccess()
+    } catch {
+      setSaveError("Network error. Please try again.")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add Analyst</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-1">
+          {/* Step 1: Asana lookup */}
+          <div>
+            <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1.5">
+              Asana Email
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => { setEmail(e.target.value); setLookupResult(null); setLookupError(null) }}
+                onKeyDown={(e) => e.key === "Enter" && handleLookup()}
+                placeholder="analyst@acadia.io"
+                className="flex-1 h-9 px-3 text-sm bg-muted/50 border border-border rounded-md placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                disabled={isLookingUp}
+              />
+              <button
+                type="button"
+                onClick={handleLookup}
+                disabled={isLookingUp || !email.trim()}
+                className="h-9 px-3 text-sm font-medium bg-secondary border border-border rounded-md hover:bg-muted/70 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isLookingUp ? "Looking up…" : "Verify"}
+              </button>
+            </div>
+            {lookupError && <p className="text-xs text-[#E24B4A] mt-1.5">{lookupError}</p>}
+          </div>
+
+          {/* Step 2: Show verified analyst + config */}
+          {lookupResult && (
+            <>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-[#EAF3DE] border border-[#C3DFA3]">
+                {lookupResult.photoUrl ? (
+                  <img src={lookupResult.photoUrl} alt="" className="w-8 h-8 rounded-full flex-shrink-0" />
+                ) : (
+                  <span className="w-8 h-8 rounded-full bg-[#EAF3DE] border border-[#C3DFA3] flex items-center justify-center text-[11px] font-medium text-[#27500A] flex-shrink-0">
+                    {lookupResult.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
+                  </span>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{lookupResult.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{lookupResult.email}</p>
+                </div>
+                <Check className="h-4 w-4 text-[#639922] flex-shrink-0" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1.5">
+                    Pod <span className="text-[#E24B4A]">*</span>
+                  </label>
+                  <Select value={pod} onValueChange={setPod}>
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="Select pod" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pod-2">Pod-2</SelectItem>
+                      <SelectItem value="pod-3">Pod-3</SelectItem>
+                      <SelectItem value="shared">Shared Resource</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1.5">
+                    Status
+                  </label>
+                  <Select value={status} onValueChange={setStatus}>
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="ramping">Ramping</SelectItem>
+                      <SelectItem value="on-leave">On Leave</SelectItem>
+                      <SelectItem value="offboarded">Offboarded</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1.5">
+                  Involved Clients <span className="text-muted-foreground/60 normal-case">(optional)</span>
+                </label>
+                <div className={cn(
+                  "min-h-9 px-2 py-1.5 bg-muted/50 border border-border rounded-md flex flex-wrap gap-1.5 items-center",
+                  "focus-within:ring-1 focus-within:ring-ring"
+                )}>
+                  {clients.map((c) => (
+                    <span key={c} className="inline-flex items-center gap-1 bg-background border border-border rounded-full px-2 py-0.5 text-xs">
+                      {c}
+                      <button type="button" onClick={() => setClients((prev) => prev.filter((x) => x !== c))}
+                        className="text-muted-foreground hover:text-foreground">
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </span>
+                  ))}
+                  <input
+                    type="text"
+                    value={clientInput}
+                    onChange={(e) => setClientInput(e.target.value)}
+                    onKeyDown={handleClientKeyDown}
+                    onBlur={addClient}
+                    placeholder={clients.length === 0 ? "Type and press Enter to add" : ""}
+                    className="flex-1 min-w-[120px] bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground/60 mt-1">Press Enter or comma to add each client</p>
+              </div>
+
+              {saveError && <p className="text-xs text-[#E24B4A]">{saveError}</p>}
+
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={isSaving || !pod}
+                className="w-full h-9 bg-foreground text-background text-sm font-medium rounded-md hover:bg-foreground/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isSaving ? "Adding…" : "Add Analyst"}
+              </button>
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Pod label helper ───────────────────────────────────────────────────────
+
+const POD_LABELS: Record<string, string> = {
+  "pod-2": "POD-2",
+  "pod-3": "POD-3",
+  "shared": "SHARED RESOURCES",
+}
+const POD_ORDER: AnalystPod[] = ["pod-3", "pod-2", "shared"]
+
+// ─── Dashboard ──────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
   const [analysts, setAnalysts] = useState<Analyst[]>(staticAnalysts)
@@ -734,8 +781,9 @@ export default function Dashboard() {
   const [syncError, setSyncError] = useState<string | null>(null)
   const [isLoadingData, setIsLoadingData] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [showInactive, setShowInactive] = useState(false)
+  const [addModalOpen, setAddModalOpen] = useState(false)
 
-  // On mount, try to load fresh data from API (Vercel Blob)
   useEffect(() => {
     let isActive = true
     const load = async () => {
@@ -746,7 +794,7 @@ export default function Dashboard() {
         if (!isActive) return
         setAnalysts(result.analysts)
         setSyncedAt(result.syncedAt)
-        if (!result.analysts.find(a => a.id === selectedId)) {
+        if (!result.analysts.find((a) => a.id === selectedId)) {
           setSelectedId(result.analysts[0]?.id || "")
         }
       } catch (error: any) {
@@ -756,7 +804,6 @@ export default function Dashboard() {
         if (isActive) setIsLoadingData(false)
       }
     }
-
     load()
     return () => { isActive = false }
   }, [])
@@ -779,11 +826,39 @@ export default function Dashboard() {
     }
   }, [])
 
+  const handleSignOut = async () => {
+    await fetch("/api/auth", { method: "DELETE" })
+    window.location.href = "/login"
+  }
+
   const filteredAnalysts = useMemo(() => {
     if (!searchQuery.trim()) return analysts
     const query = searchQuery.toLowerCase()
-    return analysts.filter((analyst) => analyst.name.toLowerCase().includes(query))
+    return analysts.filter((a) => a.name.toLowerCase().includes(query))
   }, [searchQuery, analysts])
+
+  const visibleAnalysts = useMemo(() => {
+    if (showInactive) return filteredAnalysts
+    return filteredAnalysts.filter(
+      (a) => a.status === "active" || a.status === "ramping"
+    )
+  }, [filteredAnalysts, showInactive])
+
+  const groupedByPod = useMemo(() => {
+    const groups: Record<string, Analyst[]> = {}
+    for (const pod of POD_ORDER) groups[pod] = []
+    for (const analyst of visibleAnalysts) {
+      const pod = analyst.pod || "pod-3"
+      if (groups[pod]) groups[pod].push(analyst)
+      else groups[pod] = [analyst]
+    }
+    return groups
+  }, [visibleAnalysts])
+
+  const existingGids = useMemo(
+    () => new Set(analysts.map((a) => a.id)),
+    [analysts]
+  )
 
   const selectedAnalyst = analysts.find((a) => a.id === selectedId) || analysts[0]
 
@@ -795,9 +870,47 @@ export default function Dashboard() {
         ? "No data loaded"
         : "Static data"
 
+  const renderAnalystButton = (analyst: Analyst) => {
+    const colors = getSignalColor(analyst.signal)
+    const isSelected = analyst.id === selectedId
+    const isInactive = analyst.status === "on-leave" || analyst.status === "offboarded"
+    return (
+      <button
+        key={analyst.id}
+        onClick={() => setSelectedId(analyst.id)}
+        className={cn(
+          "w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors",
+          isSelected ? "bg-blue-50" : "hover:bg-muted/50",
+          isInactive && "opacity-50"
+        )}
+      >
+        <span className={cn("w-2 h-2 rounded-full flex-shrink-0", colors.dot)} />
+        <span className={cn(
+          "w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-medium flex-shrink-0",
+          colors.avatar
+        )}>
+          {analyst.initials}
+        </span>
+        <span className="text-[13px] text-foreground truncate flex-1">{analyst.name}</span>
+        {analyst.status === "ramping" && (
+          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-[#FAEEDA] text-[#633806] flex-shrink-0">
+            NEW
+          </span>
+        )}
+        {analyst.status === "on-leave" && (
+          <span className="text-[9px] font-medium text-muted-foreground flex-shrink-0">OL</span>
+        )}
+        {hasUpcomingTimeOff(analyst.upcomingPTO) && (
+          <span className="w-1.5 h-1.5 rounded-full bg-[#AFA9EC] flex-shrink-0" />
+        )}
+      </button>
+    )
+  }
+
   return (
     <div className="flex h-screen bg-background">
       <aside className="w-60 flex-shrink-0 bg-card border-r border-border flex flex-col h-screen">
+        {/* Header */}
         <div className="p-4 pb-3">
           <div className="flex items-center justify-between mb-3">
             <h1 className="text-sm text-muted-foreground font-medium">InAFlow</h1>
@@ -827,43 +940,65 @@ export default function Dashboard() {
           <p className="text-[10px] text-muted-foreground/60 mt-2">{syncLabel}</p>
           {syncError && <p className="text-[10px] text-[#E24B4A] mt-1">{syncError}</p>}
         </div>
-        <div className="flex-1 overflow-y-auto px-2 pb-4">
-          {filteredAnalysts.map((analyst) => {
-            const colors = getSignalColor(analyst.signal)
-            const isSelected = analyst.id === selectedId
-            return (
-              <button
-                key={analyst.id}
-                onClick={() => setSelectedId(analyst.id)}
-                className={cn(
-                  "w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors",
-                  isSelected ? "bg-blue-50" : "hover:bg-muted/50"
-                )}
-              >
-                <span className={cn("w-2 h-2 rounded-full flex-shrink-0", colors.dot)} />
-                <span
-                  className={cn(
-                    "w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-medium flex-shrink-0",
-                    colors.avatar
-                  )}
-                >
-                  {analyst.initials}
-                </span>
-                <span className="text-[13px] text-foreground truncate flex-1">{analyst.name}</span>
-                {hasUpcomingTimeOff(analyst.upcomingPTO) && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#AFA9EC] flex-shrink-0" />
-                )}
-              </button>
-            )
-          })}
-          {filteredAnalysts.length === 0 && (
+
+        {/* Analyst list grouped by pod */}
+        <div className="flex-1 overflow-y-auto px-2 pb-2">
+          {visibleAnalysts.length === 0 && (
             <p className="text-[13px] text-muted-foreground px-2 py-4">
-              {loadError ? loadError : isLoadingData ? "Loading analysts..." : "No analysts found. Refresh to sync data."}
+              {loadError ? loadError : isLoadingData ? "Loading analysts..." : "No analysts found."}
             </p>
           )}
+          {POD_ORDER.filter((pod) => groupedByPod[pod]?.length > 0).map((pod) => (
+            <div key={pod} className="mb-3">
+              <p className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-widest px-2 py-1">
+                {POD_LABELS[pod]}
+              </p>
+              {groupedByPod[pod].map(renderAnalystButton)}
+            </div>
+          ))}
+        </div>
+
+        {/* Sidebar footer */}
+        <div className="px-2 py-2 border-t border-border space-y-1">
+          {/* Show inactive toggle */}
+          <label className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showInactive}
+              onChange={(e) => setShowInactive(e.target.checked)}
+              className="w-3 h-3 rounded accent-foreground"
+            />
+            <span className="text-[11px] text-muted-foreground">Show inactive</span>
+          </label>
+
+          {/* Add analyst button */}
+          <button
+            onClick={() => setAddModalOpen(true)}
+            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-[12px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            Add Analyst
+          </button>
+
+          {/* Sign out */}
+          <button
+            onClick={handleSignOut}
+            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-[11px] text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/50 transition-colors"
+          >
+            <LogOut className="h-3 w-3" />
+            Sign out
+          </button>
         </div>
       </aside>
+
       <AnalystDetail analyst={selectedAnalyst} loadError={loadError} isLoadingData={isLoadingData} />
+
+      <AddAnalystModal
+        open={addModalOpen}
+        onClose={() => setAddModalOpen(false)}
+        existingGids={existingGids}
+        onSuccess={handleRefresh}
+      />
     </div>
   )
 }
