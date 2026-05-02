@@ -63,25 +63,14 @@ function getRatioColor(ratio: number) {
 
 // Calendar event stub color mapping
 function getStubColor(eventType: string | null): { fill: string; border: string } {
-  if (!eventType) {
-    return { fill: "transparent", border: "#D3D1C7" }
-  }
+  if (!eventType) return { fill: "transparent", border: "#D3D1C7" }
   const type = eventType.toLowerCase()
-  if (type.includes("pto") || type.includes("vto")) {
-    return { fill: "#AFA9EC", border: "#AFA9EC" }
-  }
-  if (type.includes("holiday") || type.includes("floater")) {
-    return { fill: "#FAC775", border: "#FAC775" }
-  }
-  if (type.includes("birthday") || type.includes("event")) {
-    return { fill: "#ED93B1", border: "#ED93B1" }
-  }
-  if (type.includes("anniversary")) {
-    return { fill: "#85B7EB", border: "#85B7EB" }
-  }
-  if (type.includes("appointment") || type.includes("qbr")) {
-    return { fill: "#97C459", border: "#97C459" }
-  }
+  if (type.includes("pto") || type.includes("vto"))             return { fill: "#AFA9EC", border: "#AFA9EC" }
+  if (type.includes("holiday") || type.includes("floater"))     return { fill: "#FAC775", border: "#FAC775" }
+  if (type.includes("birthday"))                                 return { fill: "#ED93B1", border: "#ED93B1" }
+  if (type.includes("event"))                                    return { fill: "#ED93B1", border: "#ED93B1" }
+  if (type.includes("anniversary"))                              return { fill: "#85B7EB", border: "#85B7EB" }
+  if (type.includes("appointment") || type.includes("qbr") || type.includes("qr")) return { fill: "#97C459", border: "#97C459" }
   return { fill: "transparent", border: "#D3D1C7" }
 }
 
@@ -630,7 +619,7 @@ function TaskList({ tasks }: { tasks: Analyst['tasks'] }) {
             onClick={() => toggleSection(title)}
             className="w-full flex items-center justify-between gap-3 text-left"
           >
-            <div className="space-y-0.5">
+            <div className="flex items-baseline gap-2">
               <span className="text-[12px] uppercase tracking-wider font-medium">{title}</span>
               <span className="text-[11px] text-muted-foreground">{items.length} tasks</span>
             </div>
@@ -797,9 +786,6 @@ function AnalystDetail({ analyst, loadError, isLoadingData }: { analyst?: Analys
         <DailyLoadChart analyst={analyst} />
 
         <div>
-          <h3 className="text-[13px] text-muted-foreground uppercase tracking-wider mb-3 font-medium">
-            Active tasks
-          </h3>
           <TaskList tasks={analyst.tasks} />
         </div>
       </div>

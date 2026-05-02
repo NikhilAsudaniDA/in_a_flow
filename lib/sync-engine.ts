@@ -48,11 +48,19 @@ const CONFIG = {
     "1206065778986030": "Review",
     "1206337349568851": "Done",
   } as Record<string, string>,
-  calendarCapacity: {
-    "PTO": 0, "VTO": 0, "Holiday": 0,
-    "Appointment": 0.5, "QR": 0.5,
-    "Birthday": 1, "Event": 1, "Work Anniversary": 1,
-  } as Record<string, number>,
+  // Keyed by Asana enum_value GID for the Calendar Color custom field.
+  // broadcast: true = apply to all pod analysts when unassigned (Holiday, QR/SAR, Event)
+  // broadcast: false = personal only; skip entirely if no one is tagged
+  calendarColors: {
+    "1202123315418045": { type: "PTO",              capacity: 0,   broadcast: false },
+    "1207250434437053": { type: "VTO",              capacity: 0,   broadcast: false },
+    "1202123315418043": { type: "Holiday",          capacity: 0,   broadcast: true  },
+    "1202123315418088": { type: "Appointment",      capacity: 0.5, broadcast: false },
+    "1202623786796577": { type: "QR",               capacity: 0.5, broadcast: true  },
+    "1202123315418042": { type: "Birthday",         capacity: 1,   broadcast: false },
+    "1206901122107898": { type: "Event",            capacity: 1,   broadcast: true  },
+    "1202123315418046": { type: "Work Anniversary", capacity: 1,   broadcast: false },
+  } as Record<string, { type: string; capacity: number; broadcast: boolean }>,
   thresholds: {
     underutilized: 0.6,
     overloaded: 1.1,
@@ -169,12 +177,12 @@ async function fetchAnalystTasks(analystGid: string, pat: string) {
 
 async function fetchCalendarEvents(pat: string) {
   const events = await asanaGetAll(
-    `/tasks?project=${CONFIG.projects.calendar}&completed_since=now&limit=100&opt_fields=name,due_on,start_on,assignee.gid,assignee.name,custom_fields.gid,custom_fields.enum_value.name`,
+    `/tasks?project=${CONFIG.projects.calendar}&completed_since=now&limit=100&opt_fields=name,due_on,start_on,assignee.gid,assignee.name,custom_fields.gid,custom_fields.enum_value.gid,custom_fields.enum_value.name`,
     pat
   );
   const threeMonthsAgo = addDays(today(), -90);
   const pastEvents = await asanaGetAll(
-    `/tasks?project=${CONFIG.projects.calendar}&completed_since=${dateStr(threeMonthsAgo)}&limit=100&opt_fields=name,due_on,start_on,assignee.gid,assignee.name,custom_fields.gid,custom_fields.enum_value.name`,
+    `/tasks?project=${CONFIG.projects.calendar}&completed_since=${dateStr(threeMonthsAgo)}&limit=100&opt_fields=name,due_on,start_on,assignee.gid,assignee.name,custom_fields.gid,custom_fields.enum_value.gid,custom_fields.enum_value.name`,
     pat
   );
   const all = [...events, ...pastEvents];
@@ -242,33 +250,28 @@ function buildCalendarMap(events: any[], analystGids: string[]) {
   for (const gid of analystGids) map[gid] = {};
 
   for (const event of events) {
+    // Resolve color via GID — immune to Asana renaming options.
+    let colorGid: string | null = null;
+    for (const cf of (event.custom_fields || [])) {
+      if (cf.gid === CONFIG.fields.calendarColor && cf.enum_value) {
+        colorGid = cf.enum_value.gid;
+      }
+    }
+    const colorInfo = colorGid ? CONFIG.calendarColors[colorGid] : null;
+    if (!colorInfo) continue;
+
+    const { type: matchedType, capacity, broadcast } = colorInfo;
     const assigneeGid = event.assignee?.gid;
     let recipients: string[];
     if (assigneeGid) {
-      // Event has a specific assignee — only apply to them if they're in our pod.
-      // Asana's calendar project contains events for the whole company; events
-      // assigned to people outside CONFIG.analysts must be dropped, not broadcast.
+      // Assigned: apply only to this person if they're in our pod; drop out-of-pod events.
       if (!map[assigneeGid]) continue;
       recipients = [assigneeGid];
     } else {
-      // Unassigned: pod-level event (holiday, QBR) — apply to everyone in the pod.
+      // Unassigned: broadcast only for Holiday, QR/SAR, Event.
+      // Birthday, Work Anniversary, PTO, VTO, Appointments → skip entirely if untagged.
+      if (!broadcast) continue;
       recipients = Object.keys(map);
-    }
-    let colorName: string | null = null;
-    for (const cf of (event.custom_fields || [])) {
-      if (cf.gid === CONFIG.fields.calendarColor && cf.enum_value) {
-        colorName = cf.enum_value.name;
-      }
-    }
-    if (!colorName) continue;
-    let capacity = 1;
-    let matchedType = colorName;
-    for (const [key, cap] of Object.entries(CONFIG.calendarCapacity)) {
-      if (colorName.toLowerCase().includes(key.toLowerCase())) {
-        capacity = cap;
-        matchedType = key;
-        break;
-      }
     }
     const start = parseDate(event.start_on || event.due_on);
     const end = parseDate(event.due_on);
@@ -281,7 +284,7 @@ function buildCalendarMap(events: any[], analystGids: string[]) {
         const existing = map[recipient][ds];
         // Lower capacity wins: a PTO (0) must never be overwritten by a birthday (1).
         if (!existing || capacity < existing.capacity) {
-          map[recipient][ds] = { type: matchedType, color: colorName, capacity };
+          map[recipient][ds] = { type: matchedType, color: matchedType, capacity };
         }
       }
       current = addDays(current, 1);
