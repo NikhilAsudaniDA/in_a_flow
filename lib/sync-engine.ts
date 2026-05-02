@@ -130,8 +130,8 @@ async function asanaGetAll(path: string, pat: string): Promise<any[]> {
   let all: any[] = [];
   let url: string | null = `https://app.asana.com/api/1.0${path}`;
   while (url) {
-    const res = await fetch(url, { headers });
-    const json = await res.json();
+    const res: Response = await fetch(url, { headers });
+    const json: any = await res.json();
     if (json.data) all.push(...json.data);
     url = json.next_page?.uri || null;
     if (url) url = `https://app.asana.com/api/1.0${url}`;

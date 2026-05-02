@@ -85,23 +85,21 @@ function getWorkloadColor(value: number, isPast: boolean) {
 // Check if analyst has any time off in next 7 days
 function hasUpcomingTimeOff(upcomingPTO: { date: string; type: string }[]): boolean {
   if (!upcomingPTO || upcomingPTO.length === 0) return false
-  const today = new Date()
-  const nextWeek = new Date()
-  nextWeek.setDate(today.getDate() + 7)
-  const todayStr = today.toISOString().split("T")[0]
-  const nextWeekStr = nextWeek.toISOString().split("T")[0]
-  
+  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })
+  const [y, m, d] = todayStr.split("-").map(Number)
+  const nextWeekDate = new Date(y, m - 1, d + 7)
+  const nextWeekStr = `${nextWeekDate.getFullYear()}-${String(nextWeekDate.getMonth() + 1).padStart(2, "0")}-${String(nextWeekDate.getDate()).padStart(2, "0")}`
+
   return upcomingPTO.some(pto => pto.date >= todayStr && pto.date <= nextWeekStr && (pto.type.toLowerCase() === "pto" || pto.type.toLowerCase() === "vto"))
 }
 
 // Get the first upcoming PTO within the next 7 days
 function getUpcomingPTO(upcomingPTO: { date: string; type: string }[]): { label: string } | null {
   if (!upcomingPTO || upcomingPTO.length === 0) return null
-  const today = new Date()
-  const nextWeek = new Date()
-  nextWeek.setDate(today.getDate() + 7)
-  const todayStr = today.toISOString().split("T")[0]
-  const nextWeekStr = nextWeek.toISOString().split("T")[0]
+  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })
+  const [y, m, d] = todayStr.split("-").map(Number)
+  const nextWeekDate = new Date(y, m - 1, d + 7)
+  const nextWeekStr = `${nextWeekDate.getFullYear()}-${String(nextWeekDate.getMonth() + 1).padStart(2, "0")}-${String(nextWeekDate.getDate()).padStart(2, "0")}`
   
   const upcoming = upcomingPTO.filter(pto => pto.date >= todayStr && pto.date <= nextWeekStr && (pto.type.toLowerCase() === "pto" || pto.type.toLowerCase() === "vto"))
   
@@ -111,72 +109,6 @@ function getUpcomingPTO(upcomingPTO: { date: string; type: string }[]): { label:
     return { label: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) }
   }
   return null
-}
-
-// Sidebar Component
-function AnalystSidebar({
-  analysts,
-  selectedId,
-  onSelect,
-  searchQuery,
-  onSearchChange,
-}: {
-  analysts: Analyst[]
-  selectedId: string
-  onSelect: (id: string) => void
-  searchQuery: string
-  onSearchChange: (query: string) => void
-}) {
-  return (
-    <aside className="w-60 flex-shrink-0 bg-card border-r border-border flex flex-col h-screen">
-      <div className="p-4 pb-3">
-        <h1 className="text-sm text-muted-foreground mb-3 font-medium">InAFlow</h1>
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search analysts..."
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full h-8 pl-8 pr-3 text-[13px] bg-muted/50 border-0 rounded-md placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-        </div>
-      </div>
-      <div className="flex-1 overflow-y-auto px-2 pb-4">
-        {analysts.map((analyst) => {
-          const colors = getSignalColor(analyst.signal)
-          const isSelected = analyst.id === selectedId
-          return (
-            <button
-              key={analyst.id}
-              onClick={() => onSelect(analyst.id)}
-              className={cn(
-                "w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors",
-                isSelected ? "bg-blue-50" : "hover:bg-muted/50"
-              )}
-            >
-              <span className={cn("w-2 h-2 rounded-full flex-shrink-0", colors.dot)} />
-              <span
-                className={cn(
-                  "w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-medium flex-shrink-0",
-                  colors.avatar
-                )}
-              >
-                {analyst.initials}
-              </span>
-              <span className="text-[13px] text-foreground truncate flex-1">{analyst.name}</span>
-              {hasUpcomingTimeOff(analyst.upcomingPTO) && (
-                <span className="w-1.5 h-1.5 rounded-full bg-[#AFA9EC] flex-shrink-0" />
-              )}
-            </button>
-          )
-        })}
-        {analysts.length === 0 && (
-          <p className="text-[13px] text-muted-foreground px-2 py-4">No analysts found</p>
-        )}
-      </div>
-    </aside>
-  )
 }
 
 // Metric Card — dual number
