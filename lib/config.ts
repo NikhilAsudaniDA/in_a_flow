@@ -73,10 +73,17 @@ export async function saveConfig(config: InAFlowConfig): Promise<void> {
 
 export async function addAnalyst(analyst: AnalystConfig): Promise<InAFlowConfig> {
   const config = await getConfig()
-  if (config.analysts.some((a) => a.gid === analyst.gid)) {
-    throw new Error("Analyst already exists")
+  const existingIdx = config.analysts.findIndex((a) => a.gid === analyst.gid)
+  if (existingIdx !== -1) {
+    if (config.analysts[existingIdx].status === "offboarded") {
+      // Replace the offboarded record with the fresh one
+      config.analysts[existingIdx] = analyst
+    } else {
+      throw new Error("Analyst already exists")
+    }
+  } else {
+    config.analysts.push(analyst)
   }
-  config.analysts.push(analyst)
   await saveConfig(config)
   return config
 }
