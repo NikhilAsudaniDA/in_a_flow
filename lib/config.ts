@@ -94,5 +94,8 @@ export async function updateAnalyst(
 }
 
 export async function removeAnalyst(gid: string): Promise<InAFlowConfig> {
-  return updateAnalyst(gid, { status: "offboarded" })
+  const config = await getConfig()
+  config.analysts = config.analysts.filter((a) => a.gid !== gid)
+  await saveConfig(config)
+  return config
 }
