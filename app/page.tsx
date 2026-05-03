@@ -469,8 +469,6 @@ function AnalystDetail({ analyst, loadError, isLoadingData }: {
 
   const colors = getSignalColor(analyst.signal)
   const { metrics } = analyst
-  const upcomingPTO = getUpcomingPTO(analyst.upcomingPTO)
-
   return (
     <main className="flex-1 bg-background overflow-y-scroll">
       <div className="p-6 px-7">
@@ -482,11 +480,6 @@ function AnalystDetail({ analyst, loadError, isLoadingData }: {
             <h2 className="text-lg font-medium text-foreground">{analyst.name}</h2>
             <p className="text-[13px] text-muted-foreground">{analyst.role}</p>
           </div>
-          {upcomingPTO && (
-            <span className="text-[11px] font-medium px-2.5 py-1 rounded-full flex-shrink-0 bg-[#E6F1FB] text-[#0C447C]">
-              OOO {upcomingPTO.label}
-            </span>
-          )}
           <span className={cn("text-sm font-semibold px-4 py-2 rounded-full flex-shrink-0", colors.badge)}>
             {analyst.signal}
           </span>
