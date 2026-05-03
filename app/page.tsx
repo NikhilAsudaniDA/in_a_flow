@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect, useCallback } from "react"
-import { Search, RefreshCw, ChevronDown, UserPlus, LogOut, X, Check } from "lucide-react"
+import { Search, RefreshCw, ChevronDown, UserPlus, LogOut, X, Check, MoreHorizontal } from "lucide-react"
 import {
   BarChart,
   Bar,
@@ -19,6 +19,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Select,
   SelectContent,
@@ -761,6 +767,175 @@ function AddAnalystModal({
   )
 }
 
+// ─── Edit Analyst Modal ─────────────────────────────────────────────────────
+
+function EditAnalystModal({
+  analyst,
+  onClose,
+  onSaved,
+}: {
+  analyst: Analyst | null
+  onClose: () => void
+  onSaved: (gid: string, pod: string, status: string, clients: string[]) => void
+}) {
+  const [pod, setPod] = useState("")
+  const [status, setStatus] = useState("active")
+  const [clientInput, setClientInput] = useState("")
+  const [clients, setClients] = useState<string[]>([])
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (analyst) {
+      setPod(analyst.pod)
+      setStatus(analyst.status)
+      setClients(analyst.clients || [])
+      setClientInput("")
+      setSaveError(null)
+    }
+  }, [analyst])
+
+  const addClient = () => {
+    const val = clientInput.trim()
+    if (val && !clients.includes(val)) setClients((prev) => [...prev, val])
+    setClientInput("")
+  }
+
+  const handleClientKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault()
+      addClient()
+    } else if (e.key === "Backspace" && !clientInput && clients.length > 0) {
+      setClients((prev) => prev.slice(0, -1))
+    }
+  }
+
+  const handleSave = async () => {
+    if (!analyst || !pod) return
+    setIsSaving(true)
+    setSaveError(null)
+    try {
+      const res = await fetch("/api/config/update-analyst", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gid: analyst.id, pod, status, clients }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setSaveError(json.error || "Save failed")
+        return
+      }
+      onSaved(analyst.id, pod, status, clients)
+      onClose()
+    } catch {
+      setSaveError("Network error. Please try again.")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={!!analyst} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit Analyst</DialogTitle>
+        </DialogHeader>
+        {analyst && (
+          <div className="space-y-4 pt-1">
+            {/* Analyst identity — read-only */}
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary border border-border">
+              <span className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-[11px] font-medium text-muted-foreground flex-shrink-0">
+                {analyst.initials}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">{analyst.name}</p>
+                {analyst.email && (
+                  <p className="text-xs text-muted-foreground truncate">{analyst.email}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1.5">
+                  Pod <span className="text-[#E24B4A]">*</span>
+                </label>
+                <Select value={pod} onValueChange={setPod}>
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="Select pod" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pod-2">Pod-2</SelectItem>
+                    <SelectItem value="pod-3">Pod-3</SelectItem>
+                    <SelectItem value="shared">Shared Resource</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1.5">
+                  Status
+                </label>
+                <Select value={status} onValueChange={setStatus}>
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="ramping">Ramping</SelectItem>
+                    <SelectItem value="on-leave">On Leave</SelectItem>
+                    <SelectItem value="offboarded">Offboarded</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1.5">
+                Involved Clients
+              </label>
+              <div className={cn(
+                "min-h-9 px-2 py-1.5 bg-muted/50 border border-border rounded-md flex flex-wrap gap-1.5 items-center",
+                "focus-within:ring-1 focus-within:ring-ring"
+              )}>
+                {clients.map((c) => (
+                  <span key={c} className="inline-flex items-center gap-1 bg-background border border-border rounded-full px-2 py-0.5 text-xs">
+                    {c}
+                    <button type="button" onClick={() => setClients((prev) => prev.filter((x) => x !== c))}
+                      className="text-muted-foreground hover:text-foreground">
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </span>
+                ))}
+                <input
+                  type="text"
+                  value={clientInput}
+                  onChange={(e) => setClientInput(e.target.value)}
+                  onKeyDown={handleClientKeyDown}
+                  onBlur={addClient}
+                  placeholder={clients.length === 0 ? "Type and press Enter to add" : ""}
+                  className="flex-1 min-w-[120px] bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground/60 mt-1">Press Enter or comma to add each client</p>
+            </div>
+
+            {saveError && <p className="text-xs text-[#E24B4A]">{saveError}</p>}
+
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving || !pod}
+              className="w-full h-9 bg-foreground text-background text-sm font-medium rounded-md hover:bg-foreground/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isSaving ? "Saving…" : "Save changes"}
+            </button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── Pod label helper ───────────────────────────────────────────────────────
 
 const POD_LABELS: Record<string, string> = {
@@ -783,6 +958,7 @@ export default function Dashboard() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [showInactive, setShowInactive] = useState(false)
   const [addModalOpen, setAddModalOpen] = useState(false)
+  const [editingAnalyst, setEditingAnalyst] = useState<Analyst | null>(null)
 
   useEffect(() => {
     let isActive = true
@@ -831,6 +1007,19 @@ export default function Dashboard() {
     window.location.href = "/login"
   }
 
+  const handleAnalystUpdated = useCallback(
+    (gid: string, pod: string, status: string, clients: string[]) => {
+      setAnalysts((prev) =>
+        prev.map((a) =>
+          a.id === gid
+            ? { ...a, pod: pod as any, status: status as any, clients }
+            : a
+        )
+      )
+    },
+    []
+  )
+
   const filteredAnalysts = useMemo(() => {
     if (!searchQuery.trim()) return analysts
     const query = searchQuery.toLowerCase()
@@ -875,35 +1064,50 @@ export default function Dashboard() {
     const isSelected = analyst.id === selectedId
     const isInactive = analyst.status === "on-leave" || analyst.status === "offboarded"
     return (
-      <button
-        key={analyst.id}
-        onClick={() => setSelectedId(analyst.id)}
-        className={cn(
-          "w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors",
-          isSelected ? "bg-blue-50" : "hover:bg-muted/50",
-          isInactive && "opacity-50"
-        )}
-      >
-        <span className={cn("w-2 h-2 rounded-full flex-shrink-0", colors.dot)} />
-        <span className={cn(
-          "w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-medium flex-shrink-0",
-          colors.avatar
-        )}>
-          {analyst.initials}
-        </span>
-        <span className="text-[13px] text-foreground truncate flex-1">{analyst.name}</span>
-        {analyst.status === "ramping" && (
-          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-[#FAEEDA] text-[#633806] flex-shrink-0">
-            NEW
+      <div key={analyst.id} className={cn("group flex items-center rounded-md", isInactive && "opacity-50")}>
+        <button
+          onClick={() => setSelectedId(analyst.id)}
+          className={cn(
+            "flex-1 flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors min-w-0",
+            isSelected ? "bg-blue-50" : "hover:bg-muted/50"
+          )}
+        >
+          <span className={cn("w-2 h-2 rounded-full flex-shrink-0", colors.dot)} />
+          <span className={cn(
+            "w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-medium flex-shrink-0",
+            colors.avatar
+          )}>
+            {analyst.initials}
           </span>
-        )}
-        {analyst.status === "on-leave" && (
-          <span className="text-[9px] font-medium text-muted-foreground flex-shrink-0">OL</span>
-        )}
-        {hasUpcomingTimeOff(analyst.upcomingPTO) && (
-          <span className="w-1.5 h-1.5 rounded-full bg-[#AFA9EC] flex-shrink-0" />
-        )}
-      </button>
+          <span className="text-[13px] text-foreground truncate flex-1">{analyst.name}</span>
+          {analyst.status === "ramping" && (
+            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-[#FAEEDA] text-[#633806] flex-shrink-0">
+              NEW
+            </span>
+          )}
+          {analyst.status === "on-leave" && (
+            <span className="text-[9px] font-medium text-muted-foreground flex-shrink-0">OL</span>
+          )}
+          {hasUpcomingTimeOff(analyst.upcomingPTO) && (
+            <span className="w-1.5 h-1.5 rounded-full bg-[#AFA9EC] flex-shrink-0" />
+          )}
+        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 flex-shrink-0 p-1 mr-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-opacity"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-36">
+            <DropdownMenuItem onClick={() => setEditingAnalyst(analyst)}>
+              Edit profile
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     )
   }
 
@@ -998,6 +1202,12 @@ export default function Dashboard() {
         onClose={() => setAddModalOpen(false)}
         existingGids={existingGids}
         onSuccess={handleRefresh}
+      />
+
+      <EditAnalystModal
+        analyst={editingAnalyst}
+        onClose={() => setEditingAnalyst(null)}
+        onSaved={handleAnalystUpdated}
       />
     </div>
   )
