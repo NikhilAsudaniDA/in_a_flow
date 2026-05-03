@@ -260,7 +260,7 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
             <XAxis dataKey="dateLabel" hide height={0} />
             <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false}
               tickFormatter={(v) => `${v}`} width={45} domain={[0, 24]} ticks={[0, 4, 8, 12, 16, 20, 24]} />
-            <Tooltip content={<ChartTooltip />} cursor={false} />
+            <Tooltip content={<ChartTooltip />} cursor={true} />
             {chartData.map((d) =>
               new Date(d.dateRaw).getUTCDay() === 1 ? (
                 <ReferenceLine key={`div-${d.dateRaw}`} x={d.dateLabel} stroke="var(--border)" strokeOpacity={0.8} />
@@ -1037,6 +1037,13 @@ export default function Dashboard() {
     []
   )
 
+  const handleAnalystDeleted = useCallback(async (gid: string) => {
+    await fetch("/api/config/delete-analyst", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gid }) })
+    setAnalysts((prev) => prev.filter((a) => a.id !== gid))
+    setAnalystConfigs((prev) => { const next = new Map(prev); next.delete(gid); return next })
+    setSelectedId((prev) => (prev === gid ? "" : prev))
+  }, [])
+
   // Merge live config (pod/status/clients) on top of sync blob data so profile
   // edits persist across browser refreshes without needing a full Asana sync.
   const enrichedAnalysts = useMemo(() => {
@@ -1114,9 +1121,6 @@ export default function Dashboard() {
           {analyst.status === "on-leave" && (
             <span className="text-[9px] font-medium text-muted-foreground flex-shrink-0">OL</span>
           )}
-          {hasUpcomingTimeOff(analyst.upcomingPTO) && (
-            <span className="w-1.5 h-1.5 rounded-full bg-[#AFA9EC] flex-shrink-0" />
-          )}
         </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -1130,6 +1134,16 @@ export default function Dashboard() {
           <DropdownMenuContent align="end" className="w-36">
             <DropdownMenuItem onClick={() => setEditingAnalyst(analyst)}>
               Edit profile
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={() => {
+                if (confirm(`Remove ${analyst.name} from the dashboard?`)) {
+                  handleAnalystDeleted(analyst.id)
+                }
+              }}
+            >
+              Remove
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
