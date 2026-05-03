@@ -1,5 +1,5 @@
-// lib/config.ts — InAFlow analyst config storage (Vercel Blob)
-// inaflow-config.json stores the analyst roster; everything else stays hardcoded.
+// lib/config.ts — InAFlow config storage (Vercel Blob)
+// inaflow-config.json stores the analyst roster and workspace configs.
 
 import { put, list } from "@vercel/blob"
 
@@ -17,9 +17,28 @@ export interface AnalystConfig {
   clients: string[]
 }
 
+export interface WorkspaceConfig {
+  id: string
+  name: string
+  workspaceGid: string
+  standUpProjectGid: string
+  calendarProjectGid: string
+  isDefault: boolean
+}
+
 export interface InAFlowConfig {
   analysts: AnalystConfig[]
+  workspaces: WorkspaceConfig[]
   updatedAt: string
+}
+
+const DEFAULT_WORKSPACE: WorkspaceConfig = {
+  id: "default",
+  name: "Acadia",
+  workspaceGid: "16282293647760",
+  standUpProjectGid: "1204969864314028",
+  calendarProjectGid: "1207246447954463",
+  isDefault: true,
 }
 
 const SEED_CONFIG: InAFlowConfig = {
@@ -45,6 +64,7 @@ const SEED_CONFIG: InAFlowConfig = {
       clients: [],
     },
   ],
+  workspaces: [DEFAULT_WORKSPACE],
   updatedAt: new Date().toISOString(),
 }
 
@@ -56,7 +76,13 @@ export async function getConfig(): Promise<InAFlowConfig> {
       return { ...SEED_CONFIG }
     }
     const res = await fetch(blobs[0].url, { cache: "no-store" })
-    return (await res.json()) as InAFlowConfig
+    const config = (await res.json()) as InAFlowConfig
+    // Backfill workspaces for blobs written before this field existed
+    if (!config.workspaces) {
+      config.workspaces = [DEFAULT_WORKSPACE]
+      await saveConfig(config)
+    }
+    return config
   } catch {
     return { ...SEED_CONFIG }
   }
@@ -103,6 +129,44 @@ export async function updateAnalyst(
 export async function removeAnalyst(gid: string): Promise<InAFlowConfig> {
   const config = await getConfig()
   config.analysts = config.analysts.filter((a) => a.gid !== gid)
+  await saveConfig(config)
+  return config
+}
+
+export async function addWorkspace(workspace: WorkspaceConfig): Promise<InAFlowConfig> {
+  const config = await getConfig()
+  if (config.workspaces.some((w) => w.id === workspace.id)) {
+    throw new Error("Workspace already exists")
+  }
+  // If this is the first workspace or marked default, clear other defaults
+  if (workspace.isDefault || config.workspaces.length === 0) {
+    config.workspaces.forEach((w) => (w.isDefault = false))
+    workspace.isDefault = true
+  }
+  config.workspaces.push(workspace)
+  await saveConfig(config)
+  return config
+}
+
+export async function removeWorkspace(id: string): Promise<InAFlowConfig> {
+  const config = await getConfig()
+  const target = config.workspaces.find((w) => w.id === id)
+  if (!target) throw new Error(`Workspace ${id} not found`)
+  config.workspaces = config.workspaces.filter((w) => w.id !== id)
+  // If we removed the default, promote the first remaining workspace
+  if (target.isDefault && config.workspaces.length > 0) {
+    config.workspaces[0].isDefault = true
+  }
+  await saveConfig(config)
+  return config
+}
+
+export async function setDefaultWorkspace(id: string): Promise<InAFlowConfig> {
+  const config = await getConfig()
+  const idx = config.workspaces.findIndex((w) => w.id === id)
+  if (idx === -1) throw new Error(`Workspace ${id} not found`)
+  config.workspaces.forEach((w) => (w.isDefault = false))
+  config.workspaces[idx].isDefault = true
   await saveConfig(config)
   return config
 }

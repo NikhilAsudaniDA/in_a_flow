@@ -497,7 +497,19 @@ export interface SyncAnalyst {
   clients?: string[]
 }
 
-export async function runSync(pat: string, analysts?: SyncAnalyst[]) {
+export interface SyncWorkspace {
+  workspaceGid: string
+  standUpProjectGid: string
+  calendarProjectGid: string
+}
+
+export async function runSync(pat: string, analysts?: SyncAnalyst[], workspace?: SyncWorkspace) {
+  // Override CONFIG GIDs with per-workspace values when provided
+  if (workspace) {
+    CONFIG.workspace = workspace.workspaceGid
+    CONFIG.projects.standUp = workspace.standUpProjectGid
+    CONFIG.projects.calendar = workspace.calendarProjectGid
+  }
   const analystList: SyncAnalyst[] = analysts || CONFIG.analysts;
   const calEvents = await fetchCalendarEvents(pat);
   const analystGids = analystList.map(a => a.gid);

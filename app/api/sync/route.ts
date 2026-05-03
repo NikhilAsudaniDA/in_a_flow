@@ -37,8 +37,14 @@ export async function GET(request: Request) {
         clients: a.clients,
       }));
 
+    // Use the default workspace config (falls back to hardcoded CONFIG if not set)
+    const defaultWorkspace = config.workspaces?.find((w) => w.isDefault) ?? config.workspaces?.[0]
+    const workspaceParam = defaultWorkspace
+      ? { workspaceGid: defaultWorkspace.workspaceGid, standUpProjectGid: defaultWorkspace.standUpProjectGid, calendarProjectGid: defaultWorkspace.calendarProjectGid }
+      : undefined
+
     // Run the full sync
-    const result = await runSync(pat, activeAnalysts);
+    const result = await runSync(pat, activeAnalysts, workspaceParam);
 
     // Save to Vercel Blob
     const blob = await put("inaflow-data.json", JSON.stringify(result), {

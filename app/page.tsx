@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect, useCallback } from "react"
-import { Search, RefreshCw, ChevronDown, UserPlus, LogOut, X, Check, MoreHorizontal } from "lucide-react"
+import { Search, RefreshCw, ChevronDown, UserPlus, LogOut, X, Check, MoreHorizontal, LayoutGrid } from "lucide-react"
 import {
   BarChart,
   Bar,
@@ -937,6 +937,289 @@ function EditAnalystModal({
   )
 }
 
+// ─── Workspaces Modal ───────────────────────────────────────────────────────
+
+interface WorkspaceEntry {
+  id: string
+  name: string
+  workspaceGid: string
+  standUpProjectGid: string
+  calendarProjectGid: string
+  isDefault: boolean
+}
+
+const ACADIA_GID = "16282293647760"
+const ACADIA_STANDUP_GID = "1204969864314028"
+const ACADIA_CALENDAR_GID = "1207246447954463"
+
+function WorkspacesModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [workspaces, setWorkspaces] = useState<WorkspaceEntry[]>([])
+  const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(false)
+
+  // Wizard state
+  const [step, setStep] = useState<1 | 2 | 3>(1)
+  const [searchName, setSearchName] = useState("")
+  const [isSearching, setIsSearching] = useState(false)
+  const [foundWorkspaces, setFoundWorkspaces] = useState<{ gid: string; name: string }[]>([])
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [selectedWorkspace, setSelectedWorkspace] = useState<{ gid: string; name: string } | null>(null)
+  const [projects, setProjects] = useState<{ gid: string; name: string }[]>([])
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false)
+  const [standUpGid, setStandUpGid] = useState("")
+  const [calendarGid, setCalendarGid] = useState("")
+  const [projectError, setProjectError] = useState<string | null>(null)
+  const [workspaceName, setWorkspaceName] = useState("")
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setIsLoadingWorkspaces(true)
+    fetch("/api/config/workspaces")
+      .then((r) => r.json())
+      .then((d) => setWorkspaces(d.workspaces || []))
+      .finally(() => setIsLoadingWorkspaces(false))
+  }, [open])
+
+  const resetWizard = () => {
+    setStep(1); setSearchName(""); setFoundWorkspaces([]); setSearchError(null)
+    setSelectedWorkspace(null); setProjects([]); setStandUpGid(""); setCalendarGid("")
+    setProjectError(null); setWorkspaceName(""); setSaveError(null)
+  }
+
+  const handleSearch = async () => {
+    if (!searchName.trim()) return
+    setIsSearching(true); setSearchError(null); setFoundWorkspaces([])
+    try {
+      const res = await fetch(`/api/lookup-workspace?name=${encodeURIComponent(searchName.trim())}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Search failed")
+      if (data.workspaces.length === 0) { setSearchError("No matching workspaces found"); return }
+      setFoundWorkspaces(data.workspaces)
+    } catch (e: any) {
+      setSearchError(e.message)
+    } finally {
+      setIsSearching(false)
+    }
+  }
+
+  const handleSelectWorkspace = async (ws: { gid: string; name: string }) => {
+    setSelectedWorkspace(ws)
+    setWorkspaceName(ws.name)
+    setStep(2)
+    setIsLoadingProjects(true)
+    setProjectError(null)
+    // Pre-select Acadia defaults if applicable
+    if (ws.gid === ACADIA_GID) {
+      setStandUpGid(ACADIA_STANDUP_GID)
+      setCalendarGid(ACADIA_CALENDAR_GID)
+    } else {
+      setStandUpGid(""); setCalendarGid("")
+    }
+    try {
+      const res = await fetch(`/api/lookup-projects?workspaceGid=${ws.gid}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to load projects")
+      setProjects(data.projects)
+    } catch (e: any) {
+      setProjectError(e.message)
+    } finally {
+      setIsLoadingProjects(false)
+    }
+  }
+
+  const handleProjectsNext = () => {
+    if (!standUpGid || !calendarGid) { setProjectError("Please select both projects"); return }
+    setProjectError(null); setStep(3)
+  }
+
+  const handleSave = async () => {
+    if (!selectedWorkspace || !workspaceName.trim() || !standUpGid || !calendarGid) return
+    setIsSaving(true); setSaveError(null)
+    try {
+      const res = await fetch("/api/config/add-workspace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: workspaceName.trim(), workspaceGid: selectedWorkspace.gid, standUpProjectGid: standUpGid, calendarProjectGid: calendarGid }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to add workspace")
+      setWorkspaces(data.config.workspaces)
+      resetWizard()
+    } catch (e: any) {
+      setSaveError(e.message)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleRemove = async (id: string) => {
+    if (!confirm("Remove this workspace?")) return
+    try {
+      const res = await fetch("/api/config/delete-workspace", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to remove workspace")
+      setWorkspaces(data.config.workspaces)
+    } catch (e: any) {
+      alert(e.message)
+    }
+  }
+
+  const inputCls = "w-full h-9 px-3 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-1 focus:ring-ring"
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { resetWizard(); onClose() } }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Workspaces</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+
+          {/* Existing workspaces list */}
+          <div className="space-y-2">
+            {isLoadingWorkspaces ? (
+              <p className="text-xs text-muted-foreground py-1">Loading…</p>
+            ) : workspaces.map((w) => (
+              <div key={w.id} className="flex items-center justify-between px-3 py-2 rounded-md bg-muted/50 border border-border">
+                <div>
+                  <p className="text-sm font-medium flex items-center gap-2">
+                    {w.name}
+                    {w.isDefault && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[#EAF3DE] text-[#27500A]">DEFAULT</span>}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{w.workspaceGid}</p>
+                </div>
+                {!w.isDefault && (
+                  <button onClick={() => handleRemove(w.id)} className="text-muted-foreground hover:text-destructive transition-colors p-1">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Wizard */}
+          <div className="border-t border-border pt-4">
+            {/* Step indicator */}
+            <div className="flex items-center gap-2 mb-4">
+              {([1, 2, 3] as const).map((s) => (
+                <div key={s} className="flex items-center gap-2">
+                  <div className={cn("w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold",
+                    step === s ? "bg-foreground text-background" : step > s ? "bg-[#EAF3DE] text-[#27500A]" : "bg-muted text-muted-foreground"
+                  )}>{step > s ? <Check className="h-2.5 w-2.5" /> : s}</div>
+                  {s < 3 && <div className="w-6 h-px bg-border" />}
+                </div>
+              ))}
+              <span className="text-xs text-muted-foreground ml-1">
+                {step === 1 ? "Find workspace" : step === 2 ? "Pick projects" : "Name & save"}
+              </span>
+            </div>
+
+            {/* Step 1 — Search */}
+            {step === 1 && (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1.5">Workspace Name</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text" value={searchName}
+                      onChange={(e) => setSearchName(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                      placeholder="e.g. Acadia"
+                      className={cn(inputCls, "flex-1")}
+                    />
+                    <button onClick={handleSearch} disabled={isSearching || !searchName.trim()}
+                      className="h-9 px-4 bg-foreground text-background text-sm font-medium rounded-md hover:bg-foreground/90 disabled:opacity-50 disabled:cursor-not-allowed">
+                      {isSearching ? "…" : "Find"}
+                    </button>
+                  </div>
+                </div>
+                {searchError && <p className="text-xs text-[#E24B4A]">{searchError}</p>}
+                {foundWorkspaces.length > 0 && (
+                  <div className="space-y-1.5">
+                    {foundWorkspaces.map((ws) => (
+                      <button key={ws.gid} onClick={() => handleSelectWorkspace(ws)}
+                        className="w-full text-left px-3 py-2.5 rounded-md border border-border hover:bg-muted/50 transition-colors">
+                        <p className="text-sm font-medium">{ws.name}</p>
+                        <p className="text-[10px] text-muted-foreground font-mono">{ws.gid}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Step 2 — Pick projects */}
+            {step === 2 && (
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">Workspace: <span className="font-medium text-foreground">{selectedWorkspace?.name}</span></p>
+                {isLoadingProjects ? (
+                  <p className="text-xs text-muted-foreground">Loading projects…</p>
+                ) : (
+                  <>
+                    <div>
+                      <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1.5">Standup Project</label>
+                      <Select value={standUpGid} onValueChange={setStandUpGid}>
+                        <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select project…" /></SelectTrigger>
+                        <SelectContent>
+                          {projects.map((p) => <SelectItem key={p.gid} value={p.gid}>{p.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1.5">Calendar Project</label>
+                      <Select value={calendarGid} onValueChange={setCalendarGid}>
+                        <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select project…" /></SelectTrigger>
+                        <SelectContent>
+                          {projects.map((p) => <SelectItem key={p.gid} value={p.gid}>{p.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
+                )}
+                {projectError && <p className="text-xs text-[#E24B4A]">{projectError}</p>}
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => { setStep(1); setFoundWorkspaces([]) }}
+                    className="flex-1 h-9 border border-border text-sm rounded-md hover:bg-muted/50 transition-colors">Back</button>
+                  <button onClick={handleProjectsNext} disabled={isLoadingProjects}
+                    className="flex-1 h-9 bg-foreground text-background text-sm font-medium rounded-md hover:bg-foreground/90 disabled:opacity-50">Next</button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 3 — Name and save */}
+            {step === 3 && (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1.5">Workspace Label</label>
+                  <input type="text" value={workspaceName} onChange={(e) => setWorkspaceName(e.target.value)}
+                    placeholder="e.g. Acadia — Pod 4" className={inputCls} />
+                </div>
+                <div className="rounded-md bg-muted/50 border border-border px-3 py-2 space-y-1">
+                  <p className="text-[11px] text-muted-foreground">Standup: <span className="text-foreground font-medium">{projects.find(p => p.gid === standUpGid)?.name}</span></p>
+                  <p className="text-[11px] text-muted-foreground">Calendar: <span className="text-foreground font-medium">{projects.find(p => p.gid === calendarGid)?.name}</span></p>
+                </div>
+                {saveError && <p className="text-xs text-[#E24B4A]">{saveError}</p>}
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => setStep(2)}
+                    className="flex-1 h-9 border border-border text-sm rounded-md hover:bg-muted/50 transition-colors">Back</button>
+                  <button onClick={handleSave} disabled={isSaving || !workspaceName.trim()}
+                    className="flex-1 h-9 bg-foreground text-background text-sm font-medium rounded-md hover:bg-foreground/90 disabled:opacity-50">
+                    {isSaving ? "Saving…" : "Add Workspace"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── Pod label helper ───────────────────────────────────────────────────────
 
 const POD_LABELS: Record<string, string> = {
@@ -960,6 +1243,7 @@ export default function Dashboard() {
   const [showInactive, setShowInactive] = useState(false)
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [editingAnalyst, setEditingAnalyst] = useState<Analyst | null>(null)
+  const [workspacesModalOpen, setWorkspacesModalOpen] = useState(false)
   // Config state: pod/status/clients per analyst GID — always fresh from inaflow-config.json
   const [analystConfigs, setAnalystConfigs] = useState<Map<string, { pod: AnalystPod; status: AnalystStatus; clients: string[] }>>(new Map())
 
@@ -1224,6 +1508,15 @@ export default function Dashboard() {
             Add Analyst
           </button>
 
+          {/* Workspaces button */}
+          <button
+            onClick={() => setWorkspacesModalOpen(true)}
+            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-[12px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            Workspaces
+          </button>
+
           {/* Sign out */}
           <button
             onClick={handleSignOut}
@@ -1248,6 +1541,11 @@ export default function Dashboard() {
         analyst={editingAnalyst}
         onClose={() => setEditingAnalyst(null)}
         onSaved={handleAnalystUpdated}
+      />
+
+      <WorkspacesModal
+        open={workspacesModalOpen}
+        onClose={() => setWorkspacesModalOpen(false)}
       />
     </div>
   )
