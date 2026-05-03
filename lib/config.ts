@@ -23,6 +23,7 @@ export interface WorkspaceConfig {
   workspaceGid: string
   standUpProjectGid: string
   calendarProjectGid: string
+  projectName?: string
   isDefault: boolean
 }
 
@@ -38,6 +39,7 @@ const DEFAULT_WORKSPACE: WorkspaceConfig = {
   workspaceGid: "16282293647760",
   standUpProjectGid: "1204969864314028",
   calendarProjectGid: "1207246447954463",
+  projectName: "Pod 3 Stand Up",
   isDefault: true,
 }
 
@@ -80,6 +82,12 @@ export async function getConfig(): Promise<InAFlowConfig> {
     // Backfill workspaces for blobs written before this field existed
     if (!config.workspaces) {
       config.workspaces = [DEFAULT_WORKSPACE]
+      await saveConfig(config)
+    }
+    // Backfill projectName on default workspace
+    const def = config.workspaces.find(w => w.id === "default")
+    if (def && !def.projectName) {
+      def.projectName = "Pod 3 Stand Up"
       await saveConfig(config)
     }
     return config

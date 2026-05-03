@@ -909,6 +909,7 @@ interface WorkspaceEntry {
   workspaceGid: string
   standUpProjectGid: string
   calendarProjectGid: string
+  projectName?: string
   isDefault: boolean
 }
 
@@ -919,6 +920,24 @@ const ACADIA_CALENDAR_GID = "1207246447954463"
 function WorkspacesModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [workspaces, setWorkspaces] = useState<WorkspaceEntry[]>([])
   const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(false)
+  const [expandedGids, setExpandedGids] = useState<Set<string>>(new Set())
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, { wsName: string; entries: WorkspaceEntry[] }>()
+    for (const w of workspaces) {
+      if (!map.has(w.workspaceGid)) map.set(w.workspaceGid, { wsName: w.name, entries: [] })
+      map.get(w.workspaceGid)!.entries.push(w)
+    }
+    return map
+  }, [workspaces])
+
+  const toggleExpand = (gid: string) => {
+    setExpandedGids((prev) => {
+      const next = new Set(prev)
+      next.has(gid) ? next.delete(gid) : next.add(gid)
+      return next
+    })
+  }
 
   // Wizard state
   const [step, setStep] = useState<1 | 2 | 3>(1)
@@ -998,7 +1017,7 @@ function WorkspacesModal({ open, onClose }: { open: boolean; onClose: () => void
       const res = await fetch("/api/config/add-workspace", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: workspaceName.trim(), workspaceGid: selectedWorkspace.gid, standUpProjectGid: standUpGid, calendarProjectGid: calendarGid }),
+        body: JSON.stringify({ name: workspaceName.trim(), workspaceGid: selectedWorkspace.gid, standUpProjectGid: standUpGid, calendarProjectGid: calendarGid, projectName: projects.find(p => p.gid === standUpGid)?.name }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Failed to add workspace")
@@ -1037,26 +1056,44 @@ function WorkspacesModal({ open, onClose }: { open: boolean; onClose: () => void
         </DialogHeader>
         <div className="space-y-4">
 
-          {/* Existing workspaces list */}
+          {/* Grouped workspace accordion */}
           <div className="space-y-2">
             {isLoadingWorkspaces ? (
               <p className="text-xs text-muted-foreground py-1">Loading…</p>
-            ) : workspaces.map((w) => (
-              <div key={w.id} className="flex items-center justify-between px-3 py-2 rounded-md bg-muted/50 border border-border">
-                <div>
-                  <p className="text-sm font-medium flex items-center gap-2">
-                    {w.name}
-                    {w.isDefault && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[#EAF3DE] text-[#27500A]">DEFAULT</span>}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{w.workspaceGid}</p>
-                </div>
-                {!w.isDefault && (
-                  <button onClick={() => handleRemove(w.id)} className="text-muted-foreground hover:text-destructive transition-colors p-1">
-                    <X className="h-3.5 w-3.5" />
+            ) : Array.from(grouped.entries()).map(([gid, { wsName, entries }]) => {
+              const isOpen = expandedGids.has(gid)
+              return (
+                <div key={gid} className="rounded-md border border-border overflow-hidden">
+                  {/* Accordion header */}
+                  <button
+                    onClick={() => toggleExpand(gid)}
+                    className="w-full flex items-center justify-between px-3 py-2.5 bg-muted/50 hover:bg-muted/80 transition-colors"
+                  >
+                    <span className="text-sm font-medium">{wsName}</span>
+                    <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", isOpen && "rotate-180")} />
                   </button>
-                )}
-              </div>
-            ))}
+                  {/* Accordion body */}
+                  {isOpen && (
+                    <div className="divide-y divide-border">
+                      {entries.map((w) => (
+                        <div key={w.id} className="flex items-center justify-between px-3 py-2">
+                          <span className="text-sm">{w.projectName || w.standUpProjectGid}</span>
+                          <button onClick={() => handleRemove(w.id)} className="text-muted-foreground hover:text-destructive transition-colors p-1 ml-2 shrink-0">
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => { resetWizard(); toggleExpand(gid) }}
+                        className="w-full text-left px-3 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        + Add Project
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
 
           {/* Wizard */}

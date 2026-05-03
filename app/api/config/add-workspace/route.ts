@@ -5,7 +5,7 @@ import { randomUUID } from "crypto"
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name, workspaceGid, standUpProjectGid, calendarProjectGid } = body
+    const { name, workspaceGid, standUpProjectGid, calendarProjectGid, projectName } = body
 
     if (!name || !workspaceGid || !standUpProjectGid || !calendarProjectGid) {
       return Response.json({ error: "name, workspaceGid, standUpProjectGid, and calendarProjectGid are required" }, { status: 400 })
@@ -17,6 +17,7 @@ export async function POST(request: NextRequest) {
       workspaceGid,
       standUpProjectGid,
       calendarProjectGid,
+      projectName: projectName || undefined,
       isDefault: false,
     }
 
