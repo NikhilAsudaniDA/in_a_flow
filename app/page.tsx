@@ -958,10 +958,9 @@ function WorkspacesModal({ open, onClose }: { open: boolean; onClose: () => void
 
   // Wizard state
   const [step, setStep] = useState<1 | 2 | 3>(1)
-  const [searchName, setSearchName] = useState("")
-  const [isSearching, setIsSearching] = useState(false)
-  const [foundWorkspaces, setFoundWorkspaces] = useState<{ gid: string; name: string }[]>([])
-  const [searchError, setSearchError] = useState<string | null>(null)
+  const [asanaWorkspaces, setAsanaWorkspaces] = useState<{ gid: string; name: string }[]>([])
+  const [isLoadingAsanaWorkspaces, setIsLoadingAsanaWorkspaces] = useState(false)
+  const [asanaWorkspacesError, setAsanaWorkspacesError] = useState<string | null>(null)
   const [selectedWorkspace, setSelectedWorkspace] = useState<{ gid: string; name: string } | null>(null)
   const [projects, setProjects] = useState<{ gid: string; name: string }[]>([])
   const [isLoadingProjects, setIsLoadingProjects] = useState(false)
@@ -979,28 +978,23 @@ function WorkspacesModal({ open, onClose }: { open: boolean; onClose: () => void
       .then((r) => r.json())
       .then((d) => setWorkspaces(d.workspaces || []))
       .finally(() => setIsLoadingWorkspaces(false))
+    // Auto-load all Asana workspaces
+    setIsLoadingAsanaWorkspaces(true)
+    setAsanaWorkspacesError(null)
+    fetch("/api/lookup-workspace")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.error) throw new Error(d.error)
+        setAsanaWorkspaces(d.workspaces || [])
+      })
+      .catch((e) => setAsanaWorkspacesError(e.message))
+      .finally(() => setIsLoadingAsanaWorkspaces(false))
   }, [open])
 
   const resetWizard = () => {
-    setStep(1); setSearchName(""); setFoundWorkspaces([]); setSearchError(null)
+    setStep(1)
     setSelectedWorkspace(null); setProjects([]); setStandUpGid(""); setCalendarGid("")
     setProjectError(null); setWorkspaceName(""); setSaveError(null)
-  }
-
-  const handleSearch = async () => {
-    if (!searchName.trim()) return
-    setIsSearching(true); setSearchError(null); setFoundWorkspaces([])
-    try {
-      const res = await fetch(`/api/lookup-workspace?name=${encodeURIComponent(searchName.trim())}`)
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Search failed")
-      if (data.workspaces.length === 0) { setSearchError("No matching workspaces found"); return }
-      setFoundWorkspaces(data.workspaces)
-    } catch (e: any) {
-      setSearchError(e.message)
-    } finally {
-      setIsSearching(false)
-    }
   }
 
   const handleSelectWorkspace = async (ws: { gid: string; name: string }) => {
@@ -1114,40 +1108,25 @@ function WorkspacesModal({ open, onClose }: { open: boolean; onClose: () => void
                 </div>
               ))}
               <span className="text-xs text-muted-foreground ml-1">
-                {step === 1 ? "Find workspace" : step === 2 ? "Pick projects" : "Name & save"}
+                {step === 1 ? "Select workspace" : step === 2 ? "Pick projects" : "Name & save"}
               </span>
             </div>
 
-            {/* Step 1 — Search */}
+            {/* Step 1 — Pick workspace */}
             {step === 1 && (
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1.5">Workspace Name</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text" value={searchName}
-                      onChange={(e) => setSearchName(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                      placeholder="e.g. Acadia"
-                      className={cn(inputCls, "flex-1")}
-                    />
-                    <button onClick={handleSearch} disabled={isSearching || !searchName.trim()}
-                      className="h-9 px-4 bg-foreground text-background text-sm font-medium rounded-md hover:bg-foreground/90 disabled:opacity-50 disabled:cursor-not-allowed">
-                      {isSearching ? "…" : "Find"}
+              <div className="space-y-2">
+                {isLoadingAsanaWorkspaces ? (
+                  <p className="text-xs text-muted-foreground py-1">Loading workspaces…</p>
+                ) : asanaWorkspacesError ? (
+                  <p className="text-xs text-[#E24B4A]">{asanaWorkspacesError}</p>
+                ) : (
+                  asanaWorkspaces.map((ws) => (
+                    <button key={ws.gid} onClick={() => handleSelectWorkspace(ws)}
+                      className="w-full text-left px-3 py-2.5 rounded-md border border-border hover:bg-muted/50 transition-colors">
+                      <p className="text-sm font-medium">{ws.name}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">{ws.gid}</p>
                     </button>
-                  </div>
-                </div>
-                {searchError && <p className="text-xs text-[#E24B4A]">{searchError}</p>}
-                {foundWorkspaces.length > 0 && (
-                  <div className="space-y-1.5">
-                    {foundWorkspaces.map((ws) => (
-                      <button key={ws.gid} onClick={() => handleSelectWorkspace(ws)}
-                        className="w-full text-left px-3 py-2.5 rounded-md border border-border hover:bg-muted/50 transition-colors">
-                        <p className="text-sm font-medium">{ws.name}</p>
-                        <p className="text-[10px] text-muted-foreground font-mono">{ws.gid}</p>
-                      </button>
-                    ))}
-                  </div>
+                  ))
                 )}
               </div>
             )}
@@ -1182,7 +1161,7 @@ function WorkspacesModal({ open, onClose }: { open: boolean; onClose: () => void
                 )}
                 {projectError && <p className="text-xs text-[#E24B4A]">{projectError}</p>}
                 <div className="flex gap-2 pt-1">
-                  <button onClick={() => { setStep(1); setFoundWorkspaces([]) }}
+                  <button onClick={() => setStep(1)}
                     className="flex-1 h-9 border border-border text-sm rounded-md hover:bg-muted/50 transition-colors">Back</button>
                   <button onClick={handleProjectsNext} disabled={isLoadingProjects}
                     className="flex-1 h-9 bg-foreground text-background text-sm font-medium rounded-md hover:bg-foreground/90 disabled:opacity-50">Next</button>
