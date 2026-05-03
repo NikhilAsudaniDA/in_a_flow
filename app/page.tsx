@@ -38,6 +38,7 @@ import {
   triggerSync,
   type Analyst,
   type AnalystPod,
+  type AnalystStatus,
   type Signal,
   type EffortLevel,
   type Task,
@@ -444,7 +445,7 @@ function AnalystDetail({ analyst, loadError, isLoadingData }: {
   analyst?: Analyst; loadError: string | null; isLoadingData: boolean
 }) {
   if (isLoadingData) {
-    return <main className="flex-1 bg-background flex items-center justify-center text-muted-foreground">Loading analyst data…</main>
+    return <main className="flex-1 bg-background flex items-center justify-center text-muted-foreground">Processing Data…</main>
   }
   if (loadError) {
     return (
@@ -959,6 +960,8 @@ export default function Dashboard() {
   const [showInactive, setShowInactive] = useState(false)
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [editingAnalyst, setEditingAnalyst] = useState<Analyst | null>(null)
+  // Config state: pod/status/clients per analyst GID — always fresh from inaflow-config.json
+  const [analystConfigs, setAnalystConfigs] = useState<Map<string, { pod: AnalystPod; status: AnalystStatus; clients: string[] }>>(new Map())
 
   useEffect(() => {
     let isActive = true
@@ -984,6 +987,21 @@ export default function Dashboard() {
     return () => { isActive = false }
   }, [])
 
+  // Load config separately so pod/status always reflect inaflow-config.json,
+  // not the potentially stale inaflow-data.json sync blob.
+  useEffect(() => {
+    fetch("/api/config")
+      .then((r) => r.json())
+      .then((cfg: { analysts?: Array<{ gid: string; pod: AnalystPod; status: AnalystStatus; clients: string[] }> }) => {
+        const map = new Map<string, { pod: AnalystPod; status: AnalystStatus; clients: string[] }>()
+        for (const a of cfg.analysts || []) {
+          map.set(a.gid, { pod: a.pod, status: a.status, clients: a.clients || [] })
+        }
+        setAnalystConfigs(map)
+      })
+      .catch(() => {})
+  }, [])
+
   const handleRefresh = useCallback(async () => {
     setIsSyncing(true)
     setSyncError(null)
@@ -1007,24 +1025,32 @@ export default function Dashboard() {
     window.location.href = "/login"
   }
 
+  // Update analystConfigs (not analysts) — enrichedAnalysts will re-derive automatically
   const handleAnalystUpdated = useCallback(
     (gid: string, pod: string, status: string, clients: string[]) => {
-      setAnalysts((prev) =>
-        prev.map((a) =>
-          a.id === gid
-            ? { ...a, pod: pod as any, status: status as any, clients }
-            : a
-        )
-      )
+      setAnalystConfigs((prev) => {
+        const next = new Map(prev)
+        next.set(gid, { pod: pod as AnalystPod, status: status as AnalystStatus, clients })
+        return next
+      })
     },
     []
   )
 
+  // Merge live config (pod/status/clients) on top of sync blob data so profile
+  // edits persist across browser refreshes without needing a full Asana sync.
+  const enrichedAnalysts = useMemo(() => {
+    return analysts.map((a) => {
+      const cfg = analystConfigs.get(a.id)
+      return cfg ? { ...a, pod: cfg.pod, status: cfg.status, clients: cfg.clients } : a
+    })
+  }, [analysts, analystConfigs])
+
   const filteredAnalysts = useMemo(() => {
-    if (!searchQuery.trim()) return analysts
+    if (!searchQuery.trim()) return enrichedAnalysts
     const query = searchQuery.toLowerCase()
-    return analysts.filter((a) => a.name.toLowerCase().includes(query))
-  }, [searchQuery, analysts])
+    return enrichedAnalysts.filter((a) => a.name.toLowerCase().includes(query))
+  }, [searchQuery, enrichedAnalysts])
 
   const visibleAnalysts = useMemo(() => {
     if (showInactive) return filteredAnalysts
@@ -1049,7 +1075,7 @@ export default function Dashboard() {
     [analysts]
   )
 
-  const selectedAnalyst = analysts.find((a) => a.id === selectedId) || analysts[0]
+  const selectedAnalyst = enrichedAnalysts.find((a) => a.id === selectedId) || enrichedAnalysts[0]
 
   const syncLabel = isLoadingData
     ? "Loading data..."

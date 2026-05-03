@@ -1,4 +1,4 @@
-// middleware.ts — InAFlow session auth gate (Edge Runtime)
+// proxy.ts — InAFlow session auth gate (Next.js 16 proxy convention)
 // Protects all routes except /login, /api/auth, /api/sync.
 
 import { NextRequest, NextResponse } from "next/server"
@@ -34,7 +34,7 @@ async function verifySession(token: string, secret: string): Promise<boolean> {
   }
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const isPublic = PUBLIC_PATHS.some(
     (p) => pathname === p || pathname.startsWith(p + "/")
