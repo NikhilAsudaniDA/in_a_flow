@@ -9,7 +9,6 @@ import {
   YAxis,
   Tooltip,
   ReferenceLine,
-  ReferenceArea,
   ResponsiveContainer,
   Cell,
 } from "recharts"
@@ -40,7 +39,6 @@ import {
   type AnalystPod,
   type AnalystStatus,
   type Signal,
-  type EffortLevel,
   type Task,
 } from "@/lib/data"
 import { cn } from "@/lib/utils"
@@ -95,41 +93,7 @@ function getWorkloadColor(value: number, isPast: boolean) {
   return "#B4B2A9"
 }
 
-// ─── PTO helpers ────────────────────────────────────────────────────────────
 
-function hasUpcomingTimeOff(upcomingPTO: { date: string; type: string }[]): boolean {
-  if (!upcomingPTO || upcomingPTO.length === 0) return false
-  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })
-  const [y, m, d] = todayStr.split("-").map(Number)
-  const nextWeekDate = new Date(y, m - 1, d + 7)
-  const nextWeekStr = `${nextWeekDate.getFullYear()}-${String(nextWeekDate.getMonth() + 1).padStart(2, "0")}-${String(nextWeekDate.getDate()).padStart(2, "0")}`
-  return upcomingPTO.some(
-    (pto) =>
-      pto.date >= todayStr &&
-      pto.date <= nextWeekStr &&
-      (pto.type.toLowerCase() === "pto" || pto.type.toLowerCase() === "vto")
-  )
-}
-
-function getUpcomingPTO(upcomingPTO: { date: string; type: string }[]): { label: string } | null {
-  if (!upcomingPTO || upcomingPTO.length === 0) return null
-  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })
-  const [y, m, d] = todayStr.split("-").map(Number)
-  const nextWeekDate = new Date(y, m - 1, d + 7)
-  const nextWeekStr = `${nextWeekDate.getFullYear()}-${String(nextWeekDate.getMonth() + 1).padStart(2, "0")}-${String(nextWeekDate.getDate()).padStart(2, "0")}`
-  const upcoming = upcomingPTO.filter(
-    (pto) =>
-      pto.date >= todayStr &&
-      pto.date <= nextWeekStr &&
-      (pto.type.toLowerCase() === "pto" || pto.type.toLowerCase() === "vto")
-  )
-  if (upcoming.length > 0) {
-    const pto = upcoming.sort((a, b) => a.date.localeCompare(b.date))[0]
-    const dt = new Date(pto.date)
-    return { label: dt.toLocaleDateString("en-US", { month: "short", day: "numeric" }) }
-  }
-  return null
-}
 
 // ─── KPI card components ────────────────────────────────────────────────────
 
@@ -1138,26 +1102,19 @@ function WorkspacesModal({ open, onClose }: { open: boolean; onClose: () => void
                 {isLoadingProjects ? (
                   <p className="text-xs text-muted-foreground">Loading projects…</p>
                 ) : (
-                  <>
-                    <div>
-                      <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1.5">Standup Project</label>
-                      <Select value={standUpGid} onValueChange={setStandUpGid}>
-                        <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select project…" /></SelectTrigger>
-                        <SelectContent>
-                          {projects.map((p) => <SelectItem key={p.gid} value={p.gid}>{p.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1.5">Calendar Project</label>
-                      <Select value={calendarGid} onValueChange={setCalendarGid}>
-                        <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select project…" /></SelectTrigger>
-                        <SelectContent>
-                          {projects.map((p) => <SelectItem key={p.gid} value={p.gid}>{p.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </>
+                  <div>
+                    <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1.5">Add Project</label>
+                    <Select value={standUpGid} onValueChange={(v) => {
+                      const alreadyAdded = workspaces.some(w => w.standUpProjectGid === v || w.calendarProjectGid === v)
+                      if (alreadyAdded) { setProjectError("This project is already added to another workspace"); return }
+                      setProjectError(null); setStandUpGid(v); setCalendarGid(v)
+                    }}>
+                      <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select project…" /></SelectTrigger>
+                      <SelectContent>
+                        {projects.map((p) => <SelectItem key={p.gid} value={p.gid}>{p.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 )}
                 {projectError && <p className="text-xs text-[#E24B4A]">{projectError}</p>}
                 <div className="flex gap-2 pt-1">
@@ -1177,9 +1134,8 @@ function WorkspacesModal({ open, onClose }: { open: boolean; onClose: () => void
                   <input type="text" value={workspaceName} onChange={(e) => setWorkspaceName(e.target.value)}
                     placeholder="e.g. Acadia — Pod 4" className={inputCls} />
                 </div>
-                <div className="rounded-md bg-muted/50 border border-border px-3 py-2 space-y-1">
-                  <p className="text-[11px] text-muted-foreground">Standup: <span className="text-foreground font-medium">{projects.find(p => p.gid === standUpGid)?.name}</span></p>
-                  <p className="text-[11px] text-muted-foreground">Calendar: <span className="text-foreground font-medium">{projects.find(p => p.gid === calendarGid)?.name}</span></p>
+                <div className="rounded-md bg-muted/50 border border-border px-3 py-2">
+                  <p className="text-[11px] text-muted-foreground">Project: <span className="text-foreground font-medium">{projects.find(p => p.gid === standUpGid)?.name}</span></p>
                 </div>
                 {saveError && <p className="text-xs text-[#E24B4A]">{saveError}</p>}
                 <div className="flex gap-2 pt-1">

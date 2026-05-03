@@ -2,8 +2,8 @@ import { NextRequest } from "next/server"
 
 export async function GET(request: NextRequest) {
   const name = request.nextUrl.searchParams.get("name")?.trim().toLowerCase() || ""
-  const pat = process.env.ASANA_API_KEY
-  if (!pat) return Response.json({ error: "ASANA_API_KEY not configured" }, { status: 500 })
+  const pat = process.env.ASANA_PAT
+  if (!pat) return Response.json({ error: "ASANA_PAT not configured" }, { status: 500 })
 
   try {
     const res = await fetch("https://app.asana.com/api/1.0/workspaces?limit=100", {

@@ -18,9 +18,9 @@ export async function GET(request: Request) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const pat = process.env.ASANA_API_KEY;
+  const pat = process.env.ASANA_PAT;
   if (!pat) {
-    return Response.json({ error: "ASANA_API_KEY not configured" }, { status: 500 });
+    return Response.json({ error: "ASANA_PAT not configured" }, { status: 500 });
   }
 
   try {

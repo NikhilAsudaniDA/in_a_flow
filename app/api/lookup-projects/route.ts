@@ -4,8 +4,8 @@ export async function GET(request: NextRequest) {
   const workspaceGid = request.nextUrl.searchParams.get("workspaceGid")?.trim()
   if (!workspaceGid) return Response.json({ error: "workspaceGid is required" }, { status: 400 })
 
-  const pat = process.env.ASANA_API_KEY
-  if (!pat) return Response.json({ error: "ASANA_API_KEY not configured" }, { status: 500 })
+  const pat = process.env.ASANA_PAT?.trim()
+  if (!pat) return Response.json({ error: "ASANA_PAT not configured" }, { status: 500 })
 
   try {
     const projects: { gid: string; name: string }[] = []
@@ -15,9 +15,9 @@ export async function GET(request: NextRequest) {
         headers: { Authorization: `Bearer ${pat}`, Accept: "application/json" },
       })
       const json: any = await res.json()
-      if (!res.ok) return Response.json({ error: json.errors?.[0]?.message || "Asana error" }, { status: 502 })
+      if (!res.ok) return Response.json({ error: json.errors?.[0]?.message || "Asana error", detail: json }, { status: 502 })
       projects.push(...(json.data || []).map((p: any) => ({ gid: p.gid, name: p.name })))
-      url = json.next_page?.uri ? `https://app.asana.com/api/1.0${json.next_page.uri}` : null
+      url = json.next_page?.uri ?? null
     }
 
     return Response.json({ projects: projects.sort((a, b) => a.name.localeCompare(b.name)) })
