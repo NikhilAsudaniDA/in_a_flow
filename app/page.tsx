@@ -175,8 +175,7 @@ function ChartTooltip({ active, payload }: { active?: boolean; payload?: any[] }
 
 function DailyLoadChart({ analyst }: { analyst: Analyst }) {
   const chartData = useMemo(() => {
-    const localToday = new Date()
-    const todayStr = `${localToday.getFullYear()}-${String(localToday.getMonth() + 1).padStart(2, '0')}-${String(localToday.getDate()).padStart(2, '0')}`
+    const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })
     const dueCountByDate: Record<string, number> = {}
     const allWorkingTasks = [
       ...(analyst.tasks.overdue || []),
