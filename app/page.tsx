@@ -15,6 +15,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -603,6 +604,7 @@ function AddAnalystModal({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Add Analyst</DialogTitle>
+          <DialogDescription className="sr-only">Add a new analyst by email lookup</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 pt-1">
           {/* Step 1: Asana lookup */}
@@ -804,6 +806,7 @@ function EditAnalystModal({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Edit Analyst</DialogTitle>
+          <DialogDescription className="sr-only">Edit analyst profile details</DialogDescription>
         </DialogHeader>
         {analyst && (
           <div className="space-y-4 pt-1">
@@ -1053,6 +1056,7 @@ function WorkspacesModal({ open, onClose }: { open: boolean; onClose: () => void
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Workspaces</DialogTitle>
+          <DialogDescription className="sr-only">Manage Asana workspaces and projects</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
 
@@ -1077,7 +1081,7 @@ function WorkspacesModal({ open, onClose }: { open: boolean; onClose: () => void
                     <div className="divide-y divide-border">
                       {entries.map((w) => (
                         <div key={w.id} className="flex items-center justify-between px-3 py-2">
-                          <span className="text-sm">{w.projectName || w.standUpProjectGid}</span>
+                          <span className={cn("text-sm", !w.projectName && "text-muted-foreground italic")}>{w.projectName || "Unknown project"}</span>
                           <button onClick={() => handleRemove(w.id)} className="text-muted-foreground hover:text-destructive transition-colors p-1 ml-2 shrink-0">
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -1142,8 +1146,8 @@ function WorkspacesModal({ open, onClose }: { open: boolean; onClose: () => void
                   <div>
                     <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-1.5">Add Project</label>
                     <Select value={standUpGid} onValueChange={(v) => {
-                      const alreadyAdded = workspaces.some(w => w.standUpProjectGid === v || w.calendarProjectGid === v)
-                      if (alreadyAdded) { setProjectError("This project is already added to another workspace"); return }
+                      const alreadyAdded = workspaces.some(w => w.standUpProjectGid === v)
+                      if (alreadyAdded) { setProjectError("This project is already added"); return }
                       setProjectError(null); setStandUpGid(v); setCalendarGid(v)
                     }}>
                       <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select project…" /></SelectTrigger>
