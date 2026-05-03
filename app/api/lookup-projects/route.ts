@@ -4,8 +4,8 @@ export async function GET(request: NextRequest) {
   const workspaceGid = request.nextUrl.searchParams.get("workspaceGid")?.trim()
   if (!workspaceGid) return Response.json({ error: "workspaceGid is required" }, { status: 400 })
 
-  const pat = process.env.ASANA_PAT
-  if (!pat) return Response.json({ error: "ASANA_PAT not configured" }, { status: 500 })
+  const pat = process.env.ASANA_API_KEY
+  if (!pat) return Response.json({ error: "ASANA_API_KEY not configured" }, { status: 500 })
 
   try {
     const projects: { gid: string; name: string }[] = []

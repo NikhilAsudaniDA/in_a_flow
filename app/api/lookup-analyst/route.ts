@@ -10,9 +10,9 @@ export async function GET(request: NextRequest) {
     return Response.json({ error: "Email is required" }, { status: 400 })
   }
 
-  const pat = process.env.ASANA_PAT
+  const pat = process.env.ASANA_API_KEY
   if (!pat) {
-    return Response.json({ error: "ASANA_PAT not configured" }, { status: 500 })
+    return Response.json({ error: "ASANA_API_KEY not configured" }, { status: 500 })
   }
 
   const headers = {
