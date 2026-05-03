@@ -232,8 +232,7 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
       return {
         dateLabel: d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }),
         dateRaw: day.date,
-        stub: 0.8,
-        spacer: 0.15,
+        stub: 5,
         workload: day.points > 0 ? day.points : 0,
         isToday, isPast, eventType,
         stubFill: stubColors.fill,
@@ -254,13 +253,13 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
       <h3 className="text-[13px] text-muted-foreground uppercase tracking-wider mb-4 font-medium">
         Daily load — 30-day window
       </h3>
-      <div className="h-[200px]">
+      {/* Main workload chart — no X-axis, Y-axis on left */}
+      <div className="h-[160px]">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} margin={{ top: 20, right: 10, left: 0, bottom: 5 }} barGap={0}>
-            <XAxis dataKey="dateLabel" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-              tickLine={false} axisLine={false} interval={0} angle={-45} textAnchor="end" height={50} />
+          <BarChart data={chartData} margin={{ top: 20, right: 10, left: 0, bottom: 0 }} barGap={0} barCategoryGap="10%">
+            <XAxis dataKey="dateLabel" hide height={0} />
             <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false}
-              tickFormatter={(v) => `${v} pts`} width={45} domain={[0, 16]} ticks={[0, 4, 8, 12, 16]} />
+              tickFormatter={(v) => `${v}`} width={45} domain={[0, 24]} ticks={[0, 4, 8, 12, 16, 20, 24]} />
             <Tooltip content={<ChartTooltip />} cursor={false} />
             {chartData.map((d) =>
               new Date(d.dateRaw).getUTCDay() === 1 ? (
@@ -277,17 +276,25 @@ function DailyLoadChart({ analyst }: { analyst: Analyst }) {
                   label={{ value: `${d.tasksDueOnDay} task${d.tasksDueOnDay === 1 ? "" : "s"} due`, position: "top", fontSize: 10, fill: "#E24B4A" }} />
               ) : null
             )}
-            <Bar dataKey="stub" stackId="stack" radius={[2, 2, 2, 2]}>
-              {chartData.map((entry, index) => (
-                <Cell key={`stub-${index}`} fill={entry.stubFill} stroke={entry.stubBorder} strokeWidth={1} />
-              ))}
-            </Bar>
-            <Bar dataKey="spacer" stackId="stack" radius={0}>
-              {chartData.map((_, index) => <Cell key={`spacer-${index}`} fill="transparent" stroke="transparent" />)}
-            </Bar>
-            <Bar dataKey="workload" stackId="stack" radius={[2, 2, 0, 0]}>
+            <Bar dataKey="workload" radius={[2, 2, 0, 0]}>
               {chartData.map((entry, index) => (
                 <Cell key={`workload-${index}`} fill={entry.workload > 0 ? getWorkloadColor(entry.workload, entry.isPast) : "transparent"} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      {/* Event stub chart — no Y-axis (hidden placeholder keeps column alignment), X-axis with day labels */}
+      <div className="h-[70px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} margin={{ top: 2, right: 10, left: 45, bottom: 0 }} barGap={0} barCategoryGap="10%">
+            <XAxis dataKey="dateLabel" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+              tickLine={false} axisLine={false} interval={0} angle={-45} textAnchor="end" height={50} />
+            <YAxis width={45} hide />
+            <Tooltip content={<ChartTooltip />} cursor={false} />
+            <Bar dataKey="stub" radius={[2, 2, 2, 2]}>
+              {chartData.map((entry, index) => (
+                <Cell key={`stub-${index}`} fill={entry.stubFill} stroke={entry.stubBorder} strokeWidth={1} />
               ))}
             </Bar>
           </BarChart>
