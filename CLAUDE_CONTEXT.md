@@ -157,7 +157,7 @@ These GIDs are hardcoded in `lib/sync-engine.ts → CONFIG`. They identify speci
 | VTO | `1207250434437053` | 0% | No — personal only |
 | Holiday | `1202123315418043` | 0% | Yes — all analysts |
 | Appointments, Misc. | `1202123315418088` | 50% | No — personal only |
-| QR/SAR | `1202623786796577` | 50% | Yes — all analysts |
+| QR/SAR | `1202623786796577` | 100% | Yes — all analysts |
 | Birthday | `1202123315418042` | 100% | No — skip if unassigned |
 | Event | `1206901122107898` | 100% | Yes — all analysts |
 | Work Anniversary | `1202123315418046` | 100% | No — skip if unassigned |

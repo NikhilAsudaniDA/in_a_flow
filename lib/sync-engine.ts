@@ -56,7 +56,7 @@ const CONFIG = {
     "1207250434437053": { type: "VTO",              capacity: 0,   broadcast: false },
     "1202123315418043": { type: "Holiday",          capacity: 0,   broadcast: true  },
     "1202123315418088": { type: "Appointment",      capacity: 0.5, broadcast: false },
-    "1202623786796577": { type: "QR",               capacity: 0.5, broadcast: true  },
+    "1202623786796577": { type: "QR",               capacity: 1,   broadcast: true  },
     "1202123315418042": { type: "Birthday",         capacity: 1,   broadcast: false },
     "1206901122107898": { type: "Event",            capacity: 1,   broadcast: true  },
     "1202123315418046": { type: "Work Anniversary", capacity: 1,   broadcast: false },
